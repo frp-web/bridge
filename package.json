@@ -1,0 +1,59 @@
+{
+  "name": "frp-bridge-monorepo",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.18.1",
+  "description": "Frp bridge",
+  "author": "imba97",
+  "license": "MIT",
+  "homepage": "https://github.com/frp-web/bridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+git@github.com:frp-web/bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/frp-web/bridge/issues"
+  },
+  "keywords": [
+    "frp"
+  ],
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "stub": "pnpm -r --filter=./packages/** run stub",
+    "build": "pnpm -r --filter=./packages/** run build",
+    "test": "vitest --run",
+    "lint": "eslint --cache",
+    "release": "bumpp -r",
+    "frpx": "node ./packages/cli/bin/index.mjs",
+    "prepare": "simple-git-hooks"
+  },
+  "dependencies": {
+    "defu": "^6.1.4",
+    "fs-extra": "^11.3.2",
+    "pathe": "^2.0.3"
+  },
+  "devDependencies": {
+    "@imba97/eslint-config": "^0.0.6",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.7.0",
+    "bumpp": "^10.3.1",
+    "eslint": "^9.37.0",
+    "lint-staged": "^16.2.3",
+    "simple-git-hooks": "^2.13.1",
+    "typescript": "^5.9.3",
+    "unbuild": "^3.6.1",
+    "vitest": "^3.2.4"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged"
+  },
+  "lint-staged": {
+    "*": "eslint --cache --fix"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "frp-bridge",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Frp bridge main package",
+  "license": "MIT",
+  "homepage": "https://github.com/frp-web/bridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:frp-web/bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/frp-web/bridge/issues"
+  },
+  "keywords": [
+    "frp",
+    "bridge",
+    "main"
+  ],
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "stub": "unbuild --stub",
+    "build": "unbuild"
+  },
+  "dependencies": {
+    "@frp-bridge/core": "workspace:*",
+    "@frp-bridge/types": "workspace:*"
+  }
+}

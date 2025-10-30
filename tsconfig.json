@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "moduleDetection": "force",
+    "rootDir": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@frp-bridge/core": ["./packages/core/src/index.ts"],
+      "@frp-bridge/types": ["./packages/types/src/index.ts"],
+      "@frp-bridge/shared": ["./packages/shared/src/index.ts"],
+      "frp-bridge": ["./packages/frp-bridge/src/index.ts"]
+    },
+    "resolveJsonModule": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipDefaultLibCheck": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.ts", "./packages/**/*.ts"]
+}

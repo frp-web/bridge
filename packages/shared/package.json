@@ -1,0 +1,33 @@
+{
+  "name": "@frp-bridge/shared",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Frp bridge shared utilities",
+  "license": "MIT",
+  "homepage": "https://github.com/frp-web/bridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:frp-web/bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/frp-web/bridge/issues"
+  },
+  "keywords": [
+    "frp",
+    "bridge",
+    "shared"
+  ],
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "stub": "unbuild --stub",
+    "build": "unbuild"
+  },
+  "dependencies": {
+    "ora": "^8.2.0"
+  }
+}

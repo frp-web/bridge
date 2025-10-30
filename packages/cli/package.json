@@ -1,0 +1,37 @@
+{
+  "name": "frpx",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Frp bridge cli",
+  "license": "MIT",
+  "homepage": "https://github.com/frp-web/bridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:frp-web/bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/frp-web/bridge/issues"
+  },
+  "keywords": [
+    "frp",
+    "bridge",
+    "cli"
+  ],
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "bin": "bin/index.mjs",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "stub": "unbuild --stub",
+    "build": "unbuild"
+  },
+  "dependencies": {
+    "@frp-bridge/core": "workspace:*",
+    "@frp-bridge/shared": "workspace:*",
+    "@frp-bridge/types": "workspace:*",
+    "cac": "^6.7.14"
+  }
+}
