@@ -8,7 +8,7 @@ import { get as httpGet } from 'node:http'
 import { get as httpsGet } from 'node:https'
 import process from 'node:process'
 import { promisify } from 'node:util'
-import { ARCH_MAP, GITHUB_OWNER, GITHUB_REPO, OS_MAP } from './constants'
+import { ARCH_MAP, GITHUB_OWNER, GITHUB_REPO, OS_MAP } from '../constants'
 
 const exec = promisify(execCallback)
 

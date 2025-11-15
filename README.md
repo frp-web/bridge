@@ -12,9 +12,17 @@ FRP bridge toolkit - A modern TypeScript wrapper for [frp](https://github.com/fa
 - ⚡ **Auto Download** - Automatically downloads latest frp binaries
 - 🌍 **Cross-Platform** - Works on Linux, macOS, and Windows
 
+## Architecture Snapshot
+
+- `FrpBridge` orchestrates a deterministic runtime (`FrpRuntime`) and a process controller (`FrpProcessManager`).
+- Runtime keeps an immutable state tree plus a snapshot store (`FileSnapshotStorage`) for audit / recovery.
+- Commands mutate config and process state (`config.apply`, `process.stop` by default); queries read runtime snapshots (`process.status`, `runtime.snapshot`).
+- Every command/query can emit events, and an optional `eventSink` receives the drained stream for external observers.
+- The process manager handles binary download/update, config persistence, tunnels, and lifecycle control for frpc/frps.
+
 ## Packages
 
-- `@frp-bridge/core` - Core functionality and FrpBridge class
+- `@frp-bridge/core` - Runtime, orchestrator, process manager, snapshot storage
 - `@frp-bridge/types` - TypeScript type definitions for frp configs
 - `@frp-bridge/shared` - Shared utilities (loading spinner, etc.)
 - `frpx` - Command-line interface
@@ -51,30 +59,52 @@ frpx backup --mode client
 ```typescript
 import { FrpBridge } from 'frp-bridge'
 
-// Create client instance (auto-detects latest version)
-const bridge = new FrpBridge({ mode: 'client' })
-
-// Or specify version
 const bridge = new FrpBridge({
   mode: 'client',
-  version: '0.65.0'
+  workDir: '.frp-demo',
+  eventSink: event => console.log(event)
 })
 
-// Set configuration
-bridge.updateConfig({
-  serverAddr: 'frp.example.com',
-  serverPort: 7000,
-  auth: { token: 'your-token' }
+await bridge.execute({
+  name: 'config.apply',
+  payload: {
+    config: {
+      serverAddr: 'frp.example.com',
+      serverPort: 7000,
+      auth: { token: 'secret' }
+    },
+    restart: true
+  }
 })
 
-// Start service (auto-downloads binary if needed)
-await bridge.start()
+const status = await bridge.query({ name: 'process.status' })
+console.log(status.result.running)
 
-// Check if running
-console.log(bridge.isRunning())
+const snapshot = bridge.snapshot()
+console.log(snapshot.version)
+```
 
-// Stop service
-await bridge.stop()
+### Default Commands
+
+- `config.apply` — merge config, optionally restart the managed frp process, emit `process:started`.
+- `process.stop` — stop the running frp process and emit `process:stopped` when applicable.
+
+Register extra commands/queries by passing `commands` / `queries` dictionaries into `FrpBridge` and reuse the same `FrpRuntime` plumbing.
+
+### Reading State & Events
+
+- `bridge.snapshot()` gives the last committed runtime state (versioned).
+- `bridge.query({ name: 'runtime.snapshot' })` returns the persisted snapshot payload.
+- `bridge.drainEvents()` manually drains buffered events when `eventSink` is not provided.
+
+### Direct Process Control
+
+```typescript
+const processManager = bridge.getProcessManager()
+await processManager.updateFrpBinary('0.65.0')
+await processManager.start()
+console.log(processManager.isRunning())
+await processManager.stop()
 ```
 
 ## Configuration Example

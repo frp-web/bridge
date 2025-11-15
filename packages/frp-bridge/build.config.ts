@@ -2,6 +2,8 @@ import { mergeDefaultBuildConfig } from '../../scripts/build.common'
 
 export default mergeDefaultBuildConfig({
   entries: [
-    'src/index'
+    'src/index',
+    'src/process',
+    'src/runtime'
   ]
 })

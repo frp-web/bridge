@@ -1,24 +1,28 @@
 /**
- * FRP Bridge core class
+ * FRP process management utilities
  */
 
 import type { ClientConfig, ProxyConfig, ServerConfig } from '@frp-bridge/types'
 import type { ChildProcess } from 'node:child_process'
+import type { RuntimeLogger } from '../runtime'
 import { spawn } from 'node:child_process'
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { consola } from 'consola'
 import { join } from 'pathe'
-import { BINARY_NAMES } from './constants'
-import { ErrorCode, FrpBridgeError } from './errors'
-import { commandExists, downloadFile, ensureDir, executeCommand, getDownloadUrl, getLatestVersion, getPlatform, parseToml, toToml } from './utils'
+import { BINARY_NAMES } from '../constants'
+import { ErrorCode, FrpBridgeError } from '../errors'
+import { commandExists, downloadFile, ensureDir, executeCommand, getDownloadUrl, getLatestVersion, getPlatform, parseToml, toToml } from '../utils'
 
-export interface FrpBridgeOptions {
+export interface FrpProcessManagerOptions {
   /** Working directory for FRP files */
   workDir?: string
   /** FRP version (defaults to latest) */
   version?: string
   /** Mode: client or server */
   mode: 'client' | 'server'
+  /** Optional logger */
+  logger?: RuntimeLogger
 }
 
 export interface NodeInfo {
@@ -37,22 +41,23 @@ export interface NodeInfo {
 }
 
 /**
- * FRP Bridge main class
  * Manages FRP client/server lifecycle, config, and tunnels
  */
-export class FrpBridge {
+export class FrpProcessManager {
   private readonly workDir: string
   private version: string | null = null
   private readonly mode: 'client' | 'server'
   private readonly specifiedVersion?: string
+  private readonly logger: RuntimeLogger
   private process: ChildProcess | null = null
   private configPath: string
   private binaryPath: string
 
-  constructor(options: FrpBridgeOptions) {
+  constructor(options: FrpProcessManagerOptions) {
     this.mode = options.mode
     this.specifiedVersion = options.version
     this.workDir = options.workDir || join(homedir(), '.frp-bridge')
+    this.logger = options.logger ?? consola.withTag('FrpProcessManager')
 
     ensureDir(this.workDir)
 
@@ -215,13 +220,13 @@ export class FrpBridge {
     })
 
     this.process.on('error', (err) => {
-      console.error('FRP process error:', err)
+      this.logger.error('FRP process error', { error: err })
       this.process = null
     })
 
     this.process.on('exit', (code) => {
       if (code !== 0) {
-        console.error(`FRP process exited with code ${code}`)
+        this.logger.error('FRP process exited with non-zero code', { code })
       }
       this.process = null
     })

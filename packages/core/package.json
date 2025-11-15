@@ -30,6 +30,7 @@
   "dependencies": {
     "@frp-bridge/types": "workspace:*",
     "axios": "^1.12.2",
+    "consola": "^3.2.3",
     "execa": "^9.6.0",
     "fs-extra": "^11.3.2",
     "ini": "^5.0.0",
