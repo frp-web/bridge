@@ -1,7 +1,7 @@
 {
   "name": "@frp-bridge/shared",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Frp bridge shared utilities",
   "license": "MIT",
   "homepage": "https://github.com/frp-web/bridge#readme",
