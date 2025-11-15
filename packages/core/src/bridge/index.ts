@@ -1,6 +1,6 @@
 import type { ClientConfig, ServerConfig } from '@frp-bridge/types'
 import type { FrpProcessManagerOptions } from '../process'
-import type { CommandHandler, CommandResult, QueryHandler, QueryResult, RuntimeCommand, RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, RuntimeQuery, RuntimeState, SnapshotStorage } from '../runtime'
+import type { CommandHandler, CommandHandlerContext, CommandResult, QueryHandler, QueryResult, RuntimeCommand, RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, RuntimeQuery, RuntimeState, SnapshotStorage } from '../runtime'
 import { homedir } from 'node:os'
 import process from 'node:process'
 import { consola } from 'consola'
@@ -8,15 +8,16 @@ import { join } from 'pathe'
 import { FrpProcessManager } from '../process'
 import { FrpRuntime } from '../runtime'
 import { FileSnapshotStorage } from '../runtime/file-snapshot-storage'
-import { ensureDir } from '../utils'
-
-const DEFAULT_COMMAND_APPLY = 'config.apply'
-const DEFAULT_COMMAND_STOP = 'process.stop'
-const DEFAULT_QUERY_STATUS = 'process.status'
-const DEFAULT_QUERY_SNAPSHOT = 'runtime.snapshot'
+import { ensureDir, parseToml } from '../utils'
+import { DEFAULT_COMMAND_APPLY, DEFAULT_COMMAND_APPLY_RAW, DEFAULT_COMMAND_STOP, DEFAULT_QUERY_SNAPSHOT, DEFAULT_QUERY_STATUS } from './commands'
 
 interface ConfigApplyPayload {
   config: Partial<ClientConfig | ServerConfig>
+  restart?: boolean
+}
+
+interface ConfigApplyRawPayload {
+  content: string
   restart?: boolean
 }
 
@@ -138,29 +139,40 @@ export class FrpBridge {
         }
       }
 
-      this.process.updateConfig(command.payload.config)
-      const shouldRestart = command.payload.restart ?? true
+      return this.runConfigMutation(async () => {
+        this.process.updateConfig(command.payload!.config)
+      }, command.payload.restart, ctx)
+    }
 
-      let events: RuntimeEvent[] = []
-
-      if (shouldRestart) {
-        if (this.process.isRunning()) {
-          await this.process.stop()
-        }
-        await this.process.start()
-        events = [
-          {
-            type: 'process:started',
-            timestamp: Date.now()
+    const applyRaw: CommandHandler<ConfigApplyRawPayload> = async (command, ctx) => {
+      const content = command.payload?.content
+      if (!content?.trim()) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'config.applyRaw requires payload.content'
           }
-        ]
+        }
       }
 
-      ctx.requestVersionBump()
-      return {
-        status: 'success',
-        events: events.length ? events : undefined
+      try {
+        parseToml(content)
       }
+      catch (error) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'config.applyRaw received invalid TOML content',
+            details: error instanceof Error ? { message: error.message } : undefined
+          }
+        }
+      }
+
+      return this.runConfigMutation(async () => {
+        this.process.writeConfigFile(content)
+      }, command.payload?.restart, ctx)
     }
 
     const stop: CommandHandler = async () => {
@@ -184,6 +196,7 @@ export class FrpBridge {
 
     return {
       [DEFAULT_COMMAND_APPLY]: apply as CommandHandler,
+      [DEFAULT_COMMAND_APPLY_RAW]: applyRaw as CommandHandler,
       [DEFAULT_COMMAND_STOP]: stop
     }
   }
@@ -221,5 +234,36 @@ export class FrpBridge {
 
     const events = this.runtime.drainEvents()
     events.forEach(event => this.eventSink?.(event))
+  }
+
+  private async runConfigMutation(
+    mutate: () => Promise<void> | void,
+    restart: boolean | undefined,
+    ctx: CommandHandlerContext
+  ): Promise<CommandResult> {
+    await mutate()
+
+    const shouldRestart = restart ?? true
+    let events: RuntimeEvent[] | undefined
+
+    if (shouldRestart) {
+      if (this.process.isRunning()) {
+        await this.process.stop()
+      }
+      await this.process.start()
+      events = [
+        {
+          type: 'process:started',
+          timestamp: Date.now()
+        }
+      ]
+    }
+
+    ctx.requestVersionBump()
+
+    return {
+      status: 'success',
+      events
+    }
   }
 }

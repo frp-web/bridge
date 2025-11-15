@@ -87,6 +87,7 @@ console.log(snapshot.version)
 ### Default Commands
 
 - `config.apply` — merge config, optionally restart the managed frp process, emit `process:started`.
+- `config.applyRaw` — write a full TOML payload to the config file, share the same restart + event flow as `config.apply`.
 - `process.stop` — stop the running frp process and emit `process:stopped` when applicable.
 
 Register extra commands/queries by passing `commands` / `queries` dictionaries into `FrpBridge` and reuse the same `FrpRuntime` plumbing.

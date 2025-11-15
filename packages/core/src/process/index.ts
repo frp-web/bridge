@@ -199,6 +199,25 @@ export class FrpProcessManager {
     return backupPath
   }
 
+  /** Return the absolute config file path */
+  getConfigPath(): string {
+    return this.configPath
+  }
+
+  /** Read raw config file contents */
+  readConfigFile(): string | null {
+    if (!existsSync(this.configPath)) {
+      return null
+    }
+    return readFileSync(this.configPath, 'utf-8')
+  }
+
+  /** Overwrite config file with provided content */
+  writeConfigFile(content: string): void {
+    ensureDir(this.workDir)
+    writeFileSync(this.configPath, content, 'utf-8')
+  }
+
   /** Start FRP process */
   async start(): Promise<void> {
     await this.ensureVersion()
