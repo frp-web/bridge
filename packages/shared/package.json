@@ -28,6 +28,6 @@
     "build": "unbuild"
   },
   "dependencies": {
-    "ora": "^8.2.0"
+    "ora": "^9.0.0"
   }
 }
