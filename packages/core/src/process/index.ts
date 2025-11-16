@@ -6,6 +6,7 @@ import type { ClientConfig, ProxyConfig, ServerConfig } from '@frp-bridge/types'
 import type { ChildProcess } from 'node:child_process'
 import type { RuntimeLogger } from '../runtime'
 import { spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { consola } from 'consola'
@@ -14,9 +15,23 @@ import { BINARY_NAMES } from '../constants'
 import { ErrorCode, FrpBridgeError } from '../errors'
 import { commandExists, downloadFile, ensureDir, executeCommand, getDownloadUrl, getLatestVersion, getPlatform, parseToml, toToml } from '../utils'
 
+export interface ProcessEvent {
+  type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
+  timestamp: number
+  payload?: {
+    code?: number
+    signal?: string
+    error?: string
+    pid?: number
+    uptime?: number
+  }
+}
+
 export interface FrpProcessManagerOptions {
   /** Working directory for FRP files */
   workDir?: string
+  /** Path to config file (overrides default) */
+  configPath?: string
   /** FRP version (defaults to latest) */
   version?: string
   /** Mode: client or server */
@@ -43,7 +58,7 @@ export interface NodeInfo {
 /**
  * Manages FRP client/server lifecycle, config, and tunnels
  */
-export class FrpProcessManager {
+export class FrpProcessManager extends EventEmitter {
   private readonly workDir: string
   private version: string | null = null
   private readonly mode: 'client' | 'server'
@@ -52,16 +67,18 @@ export class FrpProcessManager {
   private process: ChildProcess | null = null
   private configPath: string
   private binaryPath: string
+  private uptime: number | null = null
+  private isManualStop = false
 
   constructor(options: FrpProcessManagerOptions) {
+    super()
     this.mode = options.mode
     this.specifiedVersion = options.version
     this.workDir = options.workDir || join(homedir(), '.frp-bridge')
+    this.configPath = options.configPath || join(this.workDir, `frp${this.mode === 'client' ? 'c' : 's'}.toml`)
     this.logger = options.logger ?? consola.withTag('FrpProcessManager')
 
     ensureDir(this.workDir)
-
-    this.configPath = join(this.workDir, `frp${this.mode === 'client' ? 'c' : 's'}.toml`)
     // Binary path will be set after version is determined
     this.binaryPath = ''
   }
@@ -177,7 +194,7 @@ export class FrpProcessManager {
 
   /** Update configuration */
   updateConfig(config: Partial<ClientConfig | ServerConfig>): void {
-    const current = this.getConfig() || {}
+    const current = this.getConfig()
     const merged = { ...current, ...config }
     const content = toToml(merged)
 
@@ -205,7 +222,7 @@ export class FrpProcessManager {
   }
 
   /** Read raw config file contents */
-  readConfigFile(): string | null {
+  getConfigRaw(): string | null {
     if (!existsSync(this.configPath)) {
       return null
     }
@@ -213,8 +230,11 @@ export class FrpProcessManager {
   }
 
   /** Overwrite config file with provided content */
-  writeConfigFile(content: string): void {
-    ensureDir(this.workDir)
+  updateConfigRaw(content: string): void {
+    const targetDir = this.configPath.includes('/') || this.configPath.includes('\\')
+      ? this.configPath.substring(0, Math.max(this.configPath.lastIndexOf('/'), this.configPath.lastIndexOf('\\')))
+      : this.workDir
+    ensureDir(targetDir)
     writeFileSync(this.configPath, content, 'utf-8')
   }
 
@@ -238,17 +258,18 @@ export class FrpProcessManager {
       stdio: 'inherit'
     })
 
-    this.process.on('error', (err) => {
-      this.logger.error('FRP process error', { error: err })
-      this.process = null
-    })
+    this.uptime = Date.now()
+    this.isManualStop = false
+    this.setupProcessListeners()
 
-    this.process.on('exit', (code) => {
-      if (code !== 0) {
-        this.logger.error('FRP process exited with non-zero code', { code })
+    this.emit('process:started', {
+      type: 'process:started',
+      timestamp: Date.now(),
+      payload: {
+        pid: this.process?.pid,
+        uptime: 0
       }
-      this.process = null
-    })
+    } satisfies ProcessEvent)
   }
 
   /** Stop FRP process */
@@ -257,9 +278,20 @@ export class FrpProcessManager {
       return
     }
 
+    this.isManualStop = true
+
     return new Promise((resolve) => {
       this.process!.on('exit', () => {
+        const uptime = this.uptime ? Date.now() - this.uptime : undefined
+
+        this.emit('process:stopped', {
+          type: 'process:stopped',
+          timestamp: Date.now(),
+          payload: { uptime }
+        } satisfies ProcessEvent)
+
         this.process = null
+        this.uptime = null
         resolve()
       })
 
@@ -276,7 +308,14 @@ export class FrpProcessManager {
 
   /** Check if process is running */
   isRunning(): boolean {
-    return this.process !== null && !this.process.killed
+    if (!this.process) {
+      return false
+    }
+
+    // 检查进程是否存在且未被杀死
+    // 注意：this.process.exitCode 为 null 表示进程仍在运行
+    // this.process.signalCode 为 null 也表示没有收到终止信号
+    return this.process.exitCode === null && this.process.signalCode === null
   }
 
   /** Add node (for client mode) */
@@ -452,5 +491,55 @@ export class FrpProcessManager {
     }
 
     return tunnels
+  }
+
+  /**
+   * Query current process status
+   */
+  queryProcess() {
+    const uptime = this.uptime ? Date.now() - this.uptime : 0
+
+    return {
+      pid: this.process?.pid,
+      uptime
+    }
+  }
+
+  private setupProcessListeners(): void {
+    if (!this.process) {
+      return
+    }
+
+    this.process.on('exit', (code, signal) => {
+      const uptime = this.uptime ? Date.now() - this.uptime : undefined
+
+      if (!this.isManualStop) {
+        this.emit('process:exited', {
+          type: 'process:exited',
+          timestamp: Date.now(),
+          payload: {
+            code: code ?? undefined,
+            signal: signal ?? undefined,
+            uptime
+          }
+        } satisfies ProcessEvent)
+      }
+
+      this.process = null
+      this.uptime = null
+    })
+
+    this.process.on('error', (error) => {
+      this.emit('process:error', {
+        type: 'process:error',
+        timestamp: Date.now(),
+        payload: {
+          error: error.message,
+          pid: this.process?.pid
+        }
+      } satisfies ProcessEvent)
+
+      this.logger.error('FRP process error', { error })
+    })
   }
 }

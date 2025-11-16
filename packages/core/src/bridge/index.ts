@@ -1,5 +1,5 @@
 import type { ClientConfig, ServerConfig } from '@frp-bridge/types'
-import type { FrpProcessManagerOptions } from '../process'
+import type { FrpProcessManagerOptions, ProcessEvent } from '../process'
 import type { CommandHandler, CommandHandlerContext, CommandResult, QueryHandler, QueryResult, RuntimeCommand, RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, RuntimeQuery, RuntimeState, SnapshotStorage } from '../runtime'
 import { homedir } from 'node:os'
 import process from 'node:process'
@@ -14,11 +14,13 @@ import { DEFAULT_COMMAND_APPLY, DEFAULT_COMMAND_APPLY_RAW, DEFAULT_COMMAND_STOP,
 interface ConfigApplyPayload {
   config: Partial<ClientConfig | ServerConfig>
   restart?: boolean
+  configPath?: string
 }
 
 interface ConfigApplyRawPayload {
   content: string
   restart?: boolean
+  configPath?: string
 }
 
 interface FrpBridgeRuntimeOptions {
@@ -38,6 +40,7 @@ interface FrpBridgeProcessOptions extends Partial<Omit<FrpProcessManagerOptions,
 export interface FrpBridgeOptions {
   mode: 'client' | 'server'
   workDir?: string
+  configPath?: string
   runtime?: FrpBridgeRuntimeOptions
   process?: FrpBridgeProcessOptions
   storage?: SnapshotStorage
@@ -67,6 +70,7 @@ export class FrpBridge {
       mode: options.process?.mode ?? options.mode,
       version: options.process?.version,
       workDir: processDir,
+      configPath: options.configPath,
       logger: processLogger
     })
 
@@ -97,6 +101,7 @@ export class FrpBridge {
     })
 
     this.eventSink = options.eventSink
+    this.setupProcessEventBridge()
   }
 
   execute<TPayload, TResult = unknown>(command: RuntimeCommand<TPayload>): Promise<CommandResult<TResult>> {
@@ -171,7 +176,7 @@ export class FrpBridge {
       }
 
       return this.runConfigMutation(async () => {
-        this.process.writeConfigFile(content)
+        this.process.updateConfigRaw(content)
       }, command.payload?.restart, ctx)
     }
 
@@ -265,5 +270,27 @@ export class FrpBridge {
       status: 'success',
       events
     }
+  }
+
+  private setupProcessEventBridge(): void {
+    if (!this.eventSink) {
+      return
+    }
+
+    this.process.on('process:started', (event: ProcessEvent) => {
+      this.eventSink?.(event as RuntimeEvent)
+    })
+
+    this.process.on('process:stopped', (event: ProcessEvent) => {
+      this.eventSink?.(event as RuntimeEvent)
+    })
+
+    this.process.on('process:exited', (event: ProcessEvent) => {
+      this.eventSink?.(event as RuntimeEvent)
+    })
+
+    this.process.on('process:error', (event: ProcessEvent) => {
+      this.eventSink?.(event as RuntimeEvent)
+    })
   }
 }
