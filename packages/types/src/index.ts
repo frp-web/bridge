@@ -13,7 +13,7 @@ export type {
   ClientTransportProtocol,
   TLSClientConfig,
   VirtualNetConfig
-} from './client.js'
+} from './client'
 
 // Common configuration types
 export type {
@@ -29,7 +29,18 @@ export type {
   ValueSource,
   ValueSourceType,
   WebServerConfig
-} from './common.js'
+} from './common'
+
+// Node management types
+export type {
+  NodeErrorCode,
+  NodeHeartbeatPayload,
+  NodeInfo,
+  NodeListQuery,
+  NodeListResponse,
+  NodeRegisterPayload,
+  NodeStatistics
+} from './node'
 
 // Proxy configuration types
 export type {
@@ -51,7 +62,7 @@ export type {
   VisitorType,
   XTCPProxyConfig,
   XTCPVisitorConfig
-} from './proxy.js'
+} from './proxy'
 
 // Server configuration types
 export type {
@@ -64,4 +75,4 @@ export type {
   ServerTransportConfig,
   SSHTunnelGateway,
   TLSServerConfig
-} from './server.js'
+} from './server'

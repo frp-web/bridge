@@ -1,10 +1,11 @@
-import type { ClientConfig, ServerConfig } from '@frp-bridge/types'
+import type { ClientConfig, NodeHeartbeatPayload, NodeRegisterPayload, ServerConfig } from '@frp-bridge/types'
 import type { FrpProcessManagerOptions, ProcessEvent } from '../process'
 import type { CommandHandler, CommandHandlerContext, CommandResult, QueryHandler, QueryResult, RuntimeCommand, RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, RuntimeQuery, RuntimeState, SnapshotStorage } from '../runtime'
 import { homedir } from 'node:os'
 import process from 'node:process'
 import { consola } from 'consola'
 import { join } from 'pathe'
+import { ClientNodeCollector, FileNodeStorage, NodeManager } from '../node'
 import { FrpProcessManager } from '../process'
 import { FrpRuntime } from '../runtime'
 import { FileSnapshotStorage } from '../runtime/file-snapshot-storage'
@@ -53,6 +54,8 @@ export class FrpBridge {
   private readonly runtime: FrpRuntime
   private readonly process: FrpProcessManager
   private readonly eventSink?: (event: RuntimeEvent) => void
+  private readonly nodeManager?: NodeManager
+  private readonly clientCollector?: ClientNodeCollector
 
   constructor(private readonly options: FrpBridgeOptions) {
     const rootWorkDir = options.workDir ?? join(homedir(), '.frp-bridge')
@@ -82,6 +85,25 @@ export class FrpBridge {
       platform: options.runtime?.platform ?? process.platform,
       clock: options.runtime?.clock,
       logger: runtimeLogger
+    }
+
+    // Initialize NodeManager for server mode
+    if (options.mode === 'server') {
+      const nodeStorageDir = join(runtimeDir, 'nodes')
+      ensureDir(nodeStorageDir)
+      const nodeStorage = new FileNodeStorage(nodeStorageDir)
+      this.nodeManager = new NodeManager(runtimeContext, {
+        heartbeatTimeout: 90000, // 90 seconds
+        logger: runtimeLogger
+      }, nodeStorage)
+    }
+
+    // Initialize ClientNodeCollector for client mode
+    if (options.mode === 'client') {
+      this.clientCollector = new ClientNodeCollector({
+        heartbeatInterval: 30000, // 30 seconds
+        logger: consola.withTag('ClientNodeCollector')
+      })
     }
 
     const commands = {
@@ -130,6 +152,33 @@ export class FrpBridge {
 
   getRuntime(): FrpRuntime {
     return this.runtime
+  }
+
+  getNodeManager(): NodeManager | undefined {
+    return this.nodeManager
+  }
+
+  getClientCollector(): ClientNodeCollector | undefined {
+    return this.clientCollector
+  }
+
+  async initialize(): Promise<void> {
+    // Initialize NodeManager if in server mode
+    if (this.nodeManager) {
+      await this.nodeManager.initialize()
+    }
+  }
+
+  async dispose(): Promise<void> {
+    // Cleanup NodeManager if in server mode
+    if (this.nodeManager) {
+      this.nodeManager.dispose()
+    }
+
+    // Cleanup ClientNodeCollector if in client mode
+    if (this.clientCollector) {
+      this.clientCollector.stopHeartbeat()
+    }
   }
 
   private createDefaultCommands(): Record<string, CommandHandler<any, any>> {
@@ -199,10 +248,132 @@ export class FrpBridge {
       }
     }
 
+    // Node management commands (server mode only)
+    const nodeRegister: CommandHandler<NodeRegisterPayload> = async (command) => {
+      if (!this.nodeManager) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'node.register is only available in server mode'
+          }
+        }
+      }
+
+      const payload = command.payload
+      if (!payload || !payload.hostname || !payload.serverAddr || !payload.serverPort) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'node.register requires hostname, serverAddr, and serverPort'
+          }
+        }
+      }
+
+      try {
+        const nodeInfo = await this.nodeManager.registerNode(payload)
+        return {
+          status: 'success',
+          result: nodeInfo
+        }
+      }
+      catch (error) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to register node'
+          }
+        }
+      }
+    }
+
+    const nodeHeartbeat: CommandHandler<NodeHeartbeatPayload> = async (command) => {
+      if (!this.nodeManager) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'node.heartbeat is only available in server mode'
+          }
+        }
+      }
+
+      const payload = command.payload
+      if (!payload || !payload.nodeId) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'node.heartbeat requires nodeId'
+          }
+        }
+      }
+
+      try {
+        await this.nodeManager.updateHeartbeat(payload)
+        return {
+          status: 'success'
+        }
+      }
+      catch (error) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to process heartbeat'
+          }
+        }
+      }
+    }
+
+    const nodeUnregister: CommandHandler<{ nodeId: string }> = async (command) => {
+      if (!this.nodeManager) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'node.unregister is only available in server mode'
+          }
+        }
+      }
+
+      const nodeId = command.payload?.nodeId
+      if (!nodeId) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'node.unregister requires nodeId'
+          }
+        }
+      }
+
+      try {
+        this.nodeManager.unregisterNode(nodeId)
+        return {
+          status: 'success'
+        }
+      }
+      catch (error) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to unregister node'
+          }
+        }
+      }
+    }
+
     return {
       [DEFAULT_COMMAND_APPLY]: apply as CommandHandler,
       [DEFAULT_COMMAND_APPLY_RAW]: applyRaw as CommandHandler,
-      [DEFAULT_COMMAND_STOP]: stop
+      [DEFAULT_COMMAND_STOP]: stop,
+      'node.register': nodeRegister,
+      'node.heartbeat': nodeHeartbeat,
+      'node.unregister': nodeUnregister
     }
   }
 
@@ -226,9 +397,83 @@ export class FrpBridge {
       }
     }
 
+    // Node management queries (server mode only)
+    const nodeList: QueryHandler = async () => {
+      if (!this.nodeManager) {
+        return {
+          result: {
+            items: [],
+            total: 0,
+            page: 1,
+            pageSize: 100,
+            hasMore: false
+          },
+          version: this.runtime.snapshot().version
+        }
+      }
+
+      const query = {
+        page: 1,
+        pageSize: 100
+      }
+
+      const result = this.nodeManager.listNodes(query)
+      return {
+        result,
+        version: this.runtime.snapshot().version
+      }
+    }
+
+    const nodeGet: QueryHandler = async (query) => {
+      if (!this.nodeManager) {
+        return {
+          result: null,
+          version: this.runtime.snapshot().version
+        }
+      }
+
+      const nodeId = (query.payload as any)?.nodeId
+      if (!nodeId) {
+        return {
+          result: null,
+          version: this.runtime.snapshot().version
+        }
+      }
+
+      const node = this.nodeManager.getNode(nodeId)
+      return {
+        result: node ?? null,
+        version: this.runtime.snapshot().version
+      }
+    }
+
+    const nodeStatistics: QueryHandler = async () => {
+      if (!this.nodeManager) {
+        return {
+          result: {
+            total: 0,
+            online: 0,
+            offline: 0,
+            connecting: 0,
+            error: 0
+          },
+          version: this.runtime.snapshot().version
+        }
+      }
+
+      const stats = this.nodeManager.getStatistics()
+      return {
+        result: stats,
+        version: this.runtime.snapshot().version
+      }
+    }
+
     return {
       [DEFAULT_QUERY_STATUS]: status,
-      [DEFAULT_QUERY_SNAPSHOT]: snapshot
+      [DEFAULT_QUERY_SNAPSHOT]: snapshot,
+      'node.list': nodeList,
+      'node.get': nodeGet,
+      'node.statistics': nodeStatistics
     }
   }
 
