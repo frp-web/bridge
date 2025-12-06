@@ -242,8 +242,9 @@ export class FrpProcessManager extends EventEmitter {
   async start(): Promise<void> {
     await this.ensureVersion()
 
-    if (this.process) {
-      throw new FrpBridgeError('Process already running', ErrorCode.PROCESS_ALREADY_RUNNING)
+    // Kill existing process if it's still running
+    if (this.isRunning()) {
+      await this.stop()
     }
 
     if (!this.hasBinary()) {
@@ -279,9 +280,11 @@ export class FrpProcessManager extends EventEmitter {
     }
 
     this.isManualStop = true
+    const proc = this.process
 
-    return new Promise((resolve) => {
-      this.process!.on('exit', () => {
+    return new Promise<void>((resolve) => {
+      // Only attach listener once
+      const exitHandler = () => {
         const uptime = this.uptime ? Date.now() - this.uptime : undefined
 
         this.emit('process:stopped', {
@@ -290,19 +293,30 @@ export class FrpProcessManager extends EventEmitter {
           payload: { uptime }
         } satisfies ProcessEvent)
 
-        this.process = null
         this.uptime = null
         resolve()
-      })
+      }
 
-      this.process!.kill('SIGTERM')
+      // Only attach listener if process is still alive
+      if (proc.exitCode === null) {
+        proc.once('exit', exitHandler)
+        proc.kill('SIGTERM')
 
-      // Force kill after 5 seconds
-      setTimeout(() => {
-        if (this.process) {
-          this.process.kill('SIGKILL')
-        }
-      }, 5000)
+        // Force kill after 5 seconds if still running
+        setTimeout(() => {
+          if (proc.exitCode === null) {
+            this.logger.warn('Process did not exit gracefully, forcing kill')
+            proc.kill('SIGKILL')
+          }
+        }, 5000)
+      }
+      else {
+        // Process already dead
+        exitHandler()
+      }
+    }).finally(() => {
+      // Always clear reference after stop completes
+      this.process = null
     })
   }
 
@@ -312,10 +326,17 @@ export class FrpProcessManager extends EventEmitter {
       return false
     }
 
-    // 检查进程是否存在且未被杀死
-    // 注意：this.process.exitCode 为 null 表示进程仍在运行
-    // this.process.signalCode 为 null 也表示没有收到终止信号
-    return this.process.exitCode === null && this.process.signalCode === null
+    // Check if process still exists and hasn't been killed
+    // exitCode is null means process is still running
+    // signalCode is null means it didn't receive a termination signal
+    const running = this.process.exitCode === null && this.process.signalCode === null
+
+    // Clean up stale process reference if process is actually dead
+    if (!running) {
+      this.process = null
+    }
+
+    return running
   }
 
   /** Add node (for client mode) */
