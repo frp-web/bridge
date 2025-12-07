@@ -64,6 +64,17 @@ export type {
   XTCPVisitorConfig
 } from './proxy'
 
+// RPC types
+export type {
+  PingMessage,
+  PongMessage,
+  RegisterMessage,
+  RpcInboundMessage,
+  RpcOutboundMessage,
+  RpcRequest,
+  RpcResponse
+} from './rpc'
+
 // Server configuration types
 export type {
   AuthMethod,

@@ -1,4 +1,4 @@
-import type { ClientConfig, NodeHeartbeatPayload, NodeRegisterPayload, ServerConfig } from '@frp-bridge/types'
+import type { ClientConfig, NodeHeartbeatPayload, NodeInfo, NodeRegisterPayload, RpcRequest, ServerConfig } from '@frp-bridge/types'
 import type { FrpProcessManagerOptions, ProcessEvent } from '../process'
 import type { CommandHandler, CommandHandlerContext, CommandResult, QueryHandler, QueryResult, RuntimeCommand, RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, RuntimeQuery, RuntimeState, SnapshotStorage } from '../runtime'
 import { homedir } from 'node:os'
@@ -7,6 +7,7 @@ import { consola } from 'consola'
 import { join } from 'pathe'
 import { ClientNodeCollector, FileNodeStorage, NodeManager } from '../node'
 import { FrpProcessManager } from '../process'
+import { RpcClient, RpcServer } from '../rpc'
 import { FrpRuntime } from '../runtime'
 import { FileSnapshotStorage } from '../runtime/file-snapshot-storage'
 import { ensureDir, parseToml } from '../utils'
@@ -38,12 +39,26 @@ interface FrpBridgeProcessOptions extends Partial<Omit<FrpProcessManagerOptions,
   workDir?: string
 }
 
+interface FrpBridgeRpcOptions {
+  serverPort?: number
+  serverHeartbeatInterval?: number
+  serverValidateToken?: (token: string | undefined, nodeId: string | undefined) => boolean | Promise<boolean>
+  serverAuthorize?: (nodeId: string, method: string) => boolean | Promise<boolean>
+  clientUrl?: string
+  clientNodeId?: string
+  clientToken?: string
+  clientReconnectInterval?: number
+  getRegisterPayload?: () => Promise<NodeInfo> | NodeInfo
+  handleRequest?: (req: RpcRequest) => Promise<unknown>
+}
+
 export interface FrpBridgeOptions {
   mode: 'client' | 'server'
   workDir?: string
   configPath?: string
   runtime?: FrpBridgeRuntimeOptions
   process?: FrpBridgeProcessOptions
+  rpc?: FrpBridgeRpcOptions
   storage?: SnapshotStorage
   commands?: Record<string, CommandHandler>
   queries?: Record<string, QueryHandler>
@@ -56,6 +71,8 @@ export class FrpBridge {
   private readonly eventSink?: (event: RuntimeEvent) => void
   private readonly nodeManager?: NodeManager
   private readonly clientCollector?: ClientNodeCollector
+  private readonly rpcServer?: RpcServer
+  private readonly rpcClient?: RpcClient
 
   constructor(private readonly options: FrpBridgeOptions) {
     const rootWorkDir = options.workDir ?? join(homedir(), '.frp-bridge')
@@ -103,6 +120,32 @@ export class FrpBridge {
       this.clientCollector = new ClientNodeCollector({
         heartbeatInterval: 30000, // 30 seconds
         logger: consola.withTag('ClientNodeCollector')
+      })
+    }
+
+    const rpcOptions = options.rpc
+
+    if (options.mode === 'server' && rpcOptions?.serverPort) {
+      this.rpcServer = new RpcServer({
+        port: rpcOptions.serverPort,
+        heartbeatInterval: rpcOptions.serverHeartbeatInterval,
+        validateToken: rpcOptions.serverValidateToken,
+        authorize: rpcOptions.serverAuthorize,
+        logger: consola.withTag('RpcServer')
+      })
+    }
+
+    if (options.mode === 'client' && rpcOptions?.clientUrl && rpcOptions.clientNodeId) {
+      const urlWithToken = this.appendToken(rpcOptions.clientUrl, rpcOptions.clientToken)
+      this.rpcClient = new RpcClient({
+        url: urlWithToken,
+        nodeId: rpcOptions.clientNodeId,
+        reconnectInterval: rpcOptions.clientReconnectInterval,
+        getRegisterPayload: rpcOptions.getRegisterPayload ?? (async () => {
+          throw new Error('rpc getRegisterPayload is required in client mode')
+        }),
+        handleRequest: rpcOptions.handleRequest ?? (async () => undefined),
+        logger: consola.withTag('RpcClient')
       })
     }
 
@@ -162,10 +205,26 @@ export class FrpBridge {
     return this.clientCollector
   }
 
+  getRpcServer(): RpcServer | undefined {
+    return this.rpcServer
+  }
+
+  getRpcClient(): RpcClient | undefined {
+    return this.rpcClient
+  }
+
   async initialize(): Promise<void> {
     // Initialize NodeManager if in server mode
     if (this.nodeManager) {
       await this.nodeManager.initialize()
+    }
+
+    if (this.rpcServer) {
+      this.rpcServer.start()
+    }
+
+    if (this.rpcClient) {
+      await this.rpcClient.connect()
     }
   }
 
@@ -178,6 +237,14 @@ export class FrpBridge {
     // Cleanup ClientNodeCollector if in client mode
     if (this.clientCollector) {
       this.clientCollector.stopHeartbeat()
+    }
+
+    if (this.rpcServer) {
+      this.rpcServer.stop()
+    }
+
+    if (this.rpcClient) {
+      this.rpcClient.disconnect()
     }
   }
 
@@ -515,6 +582,15 @@ export class FrpBridge {
       status: 'success',
       events
     }
+  }
+
+  private appendToken(url: string, token?: string): string {
+    if (!token) {
+      return url
+    }
+    const target = new URL(url)
+    target.searchParams.set('token', token)
+    return target.toString()
   }
 
   private setupProcessEventBridge(): void {
