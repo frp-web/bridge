@@ -109,11 +109,13 @@ export class FrpBridge {
       ...(options.queries ?? {})
     }
 
-    // Update runtime with handlers
-    // @ts-expect-error - Setting private property for handler registration
-    this.runtime.commands = commands
-    // @ts-expect-error - Setting private property for handler registration
-    this.runtime.queries = queries
+    // Register handlers in runtime
+    Object.entries(commands).forEach(([name, handler]) => {
+      this.runtime.registerCommand(name, handler)
+    })
+    Object.entries(queries).forEach(([name, handler]) => {
+      this.runtime.registerQuery(name, handler)
+    })
 
     this.eventSink = options.eventSink
     setupProcessEventBridge(this.process, this.eventSink)
