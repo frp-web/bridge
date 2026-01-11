@@ -1,4 +1,4 @@
-import type { ClientConfig, NodeHeartbeatPayload, NodeInfo, NodeRegisterPayload, RpcRequest, ServerConfig } from '@frp-bridge/types'
+import type { ClientConfig, NodeHeartbeatPayload, NodeInfo, NodeRegisterPayload, ProxyConfig, RpcRequest, ServerConfig } from '@frp-bridge/types'
 import type { FrpProcessManagerOptions, ProcessEvent } from '../process'
 import type { CommandHandler, CommandHandlerContext, CommandResult, QueryHandler, QueryResult, RuntimeCommand, RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, RuntimeQuery, RuntimeState, SnapshotStorage } from '../runtime'
 import { homedir } from 'node:os'
@@ -13,16 +13,33 @@ import { FileSnapshotStorage } from '../runtime/file-snapshot-storage'
 import { ensureDir, parseToml } from '../utils'
 import { DEFAULT_COMMAND_APPLY, DEFAULT_COMMAND_APPLY_RAW, DEFAULT_COMMAND_STOP, DEFAULT_QUERY_SNAPSHOT, DEFAULT_QUERY_STATUS } from './commands'
 
-interface ConfigApplyPayload {
+export interface ConfigApplyPayload {
   config: Partial<ClientConfig | ServerConfig>
   restart?: boolean
   configPath?: string
 }
 
-interface ConfigApplyRawPayload {
+export interface ConfigApplyRawPayload {
   content: string
   restart?: boolean
   configPath?: string
+}
+
+export interface ProxyAddPayload {
+  proxy: ProxyConfig
+}
+
+export interface ProxyUpdatePayload {
+  name: string
+  proxy: Partial<ProxyConfig>
+}
+
+export interface ProxyRemovePayload {
+  name: string
+}
+
+export interface ProxyGetPayload {
+  name: string
 }
 
 interface FrpBridgeRuntimeOptions {
@@ -36,7 +53,6 @@ interface FrpBridgeRuntimeOptions {
 
 interface FrpBridgeProcessOptions extends Partial<Omit<FrpProcessManagerOptions, 'mode'>> {
   mode?: 'client' | 'server'
-  workDir?: string
 }
 
 interface FrpBridgeRpcOptions {
@@ -68,6 +84,7 @@ export interface FrpBridgeOptions {
 export class FrpBridge {
   private readonly runtime: FrpRuntime
   private readonly process: FrpProcessManager
+  private readonly mode: 'client' | 'server'
   private readonly eventSink?: (event: RuntimeEvent) => void
   private readonly nodeManager?: NodeManager
   private readonly clientCollector?: ClientNodeCollector
@@ -75,6 +92,7 @@ export class FrpBridge {
   private readonly rpcClient?: RpcClient
 
   constructor(private readonly options: FrpBridgeOptions) {
+    this.mode = options.mode
     const rootWorkDir = options.workDir ?? join(homedir(), '.frp-bridge')
     const runtimeDir = options.runtime?.workDir ?? join(rootWorkDir, 'runtime')
     const processDir = options.process?.workDir ?? join(rootWorkDir, 'process')
@@ -434,13 +452,137 @@ export class FrpBridge {
       }
     }
 
+    // Proxy/tunnel management commands (client mode only)
+    const proxyAdd: CommandHandler<ProxyAddPayload> = async (command, _ctx) => {
+      if (this.mode !== 'client') {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'proxy.add is only available in client mode'
+          }
+        }
+      }
+
+      const payload = command.payload
+      if (!payload || !payload.proxy) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'proxy.add requires payload.proxy'
+          }
+        }
+      }
+
+      try {
+        this.process.addTunnel(payload.proxy)
+        return {
+          status: 'success',
+          result: payload.proxy
+        }
+      }
+      catch (error) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'RUNTIME_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to add tunnel'
+          }
+        }
+      }
+    }
+
+    const proxyUpdate: CommandHandler<ProxyUpdatePayload> = async (command, _ctx) => {
+      if (this.mode !== 'client') {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'proxy.update is only available in client mode'
+          }
+        }
+      }
+
+      const payload = command.payload
+      if (!payload || !payload.name) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'proxy.update requires payload.name'
+          }
+        }
+      }
+
+      try {
+        this.process.updateTunnel(payload.name, payload.proxy)
+        return {
+          status: 'success',
+          result: { name: payload.name, ...payload.proxy }
+        }
+      }
+      catch (error) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'RUNTIME_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to update tunnel'
+          }
+        }
+      }
+    }
+
+    const proxyRemove: CommandHandler<ProxyRemovePayload> = async (command, _ctx) => {
+      if (this.mode !== 'client') {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'proxy.remove is only available in client mode'
+          }
+        }
+      }
+
+      const payload = command.payload
+      if (!payload || !payload.name) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'proxy.remove requires payload.name'
+          }
+        }
+      }
+
+      try {
+        this.process.removeTunnel(payload.name)
+        return {
+          status: 'success',
+          result: { name: payload.name }
+        }
+      }
+      catch (error) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'RUNTIME_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to remove tunnel'
+          }
+        }
+      }
+    }
+
     return {
       [DEFAULT_COMMAND_APPLY]: apply as CommandHandler,
       [DEFAULT_COMMAND_APPLY_RAW]: applyRaw as CommandHandler,
       [DEFAULT_COMMAND_STOP]: stop,
       'node.register': nodeRegister,
       'node.heartbeat': nodeHeartbeat,
-      'node.unregister': nodeUnregister
+      'node.unregister': nodeUnregister,
+      'proxy.add': proxyAdd,
+      'proxy.update': proxyUpdate,
+      'proxy.remove': proxyRemove
     }
   }
 
@@ -535,12 +677,69 @@ export class FrpBridge {
       }
     }
 
+    // Proxy/tunnel management queries (client mode only)
+    const proxyList: QueryHandler = async () => {
+      if (this.mode !== 'client') {
+        return {
+          result: [],
+          version: this.runtime.snapshot().version
+        }
+      }
+
+      try {
+        const tunnels = this.process.listTunnels()
+        return {
+          result: tunnels,
+          version: this.runtime.snapshot().version
+        }
+      }
+      catch {
+        return {
+          result: [],
+          version: this.runtime.snapshot().version
+        }
+      }
+    }
+
+    const proxyGet: QueryHandler = async (query) => {
+      if (this.mode !== 'client') {
+        return {
+          result: null,
+          version: this.runtime.snapshot().version
+        }
+      }
+
+      const name = (query.payload as ProxyGetPayload)?.name
+      if (!name) {
+        return {
+          result: null,
+          version: this.runtime.snapshot().version
+        }
+      }
+
+      try {
+        const tunnel = this.process.getTunnel(name)
+        return {
+          result: tunnel ?? null,
+          version: this.runtime.snapshot().version
+        }
+      }
+      catch {
+        return {
+          result: null,
+          version: this.runtime.snapshot().version
+        }
+      }
+    }
+
     return {
       [DEFAULT_QUERY_STATUS]: status,
       [DEFAULT_QUERY_SNAPSHOT]: snapshot,
       'node.list': nodeList,
       'node.get': nodeGet,
-      'node.statistics': nodeStatistics
+      'node.statistics': nodeStatistics,
+      'proxy.list': proxyList,
+      'proxy.get': proxyGet
     }
   }
 

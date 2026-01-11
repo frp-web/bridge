@@ -426,10 +426,41 @@ export class FrpProcessManager extends EventEmitter {
     }
 
     const content = existsSync(this.configPath) ? readFileSync(this.configPath, 'utf-8') : ''
-    const proxyToml = toToml({ [proxy.name]: proxy })
+    const parsed = content ? parseToml(content) : {}
 
-    const newContent = content ? `${content}\n\n${proxyToml}` : proxyToml
+    // Ensure proxies array exists
+    if (!Array.isArray(parsed.proxies)) {
+      parsed.proxies = []
+    }
+
+    // Check if tunnel with same name already exists
+    const existingIndex = parsed.proxies.findIndex((p: any) => p && p.name === proxy.name)
+    if (existingIndex !== -1) {
+      throw new FrpBridgeError(`Tunnel ${proxy.name} already exists`, ErrorCode.CONFIG_INVALID)
+    }
+
+    // Check if remotePort is already used (only for types that use remotePort)
+    const proxyRemotePort = (proxy as any).remotePort
+    if (proxyRemotePort && this.typeUsesRemotePort(proxy.type)) {
+      const remotePortInUse = parsed.proxies.some((p: any) => {
+        const pRemotePort = (p as any).remotePort
+        return p && pRemotePort === proxyRemotePort && this.typeUsesRemotePort(p.type)
+      })
+      if (remotePortInUse) {
+        throw new FrpBridgeError(`Remote port ${proxyRemotePort} is already in use`, ErrorCode.CONFIG_INVALID)
+      }
+    }
+
+    // Add new tunnel to proxies array
+    parsed.proxies.push(proxy)
+
+    const newContent = toToml(parsed)
     writeFileSync(this.configPath, newContent, 'utf-8')
+  }
+
+  /** Check if proxy type uses remotePort */
+  private typeUsesRemotePort(type: string): boolean {
+    return ['tcp', 'udp', 'stcp', 'xtcp', 'sudp', 'tcpmux'].includes(type)
   }
 
   /** Get tunnel by name */
@@ -445,6 +476,12 @@ export class FrpProcessManager extends EventEmitter {
     const content = readFileSync(this.configPath, 'utf-8')
     const parsed = parseToml(content)
 
+    // Handle [[proxies]] array syntax (modern format)
+    if (Array.isArray(parsed.proxies)) {
+      return parsed.proxies.find((p: any) => p && p.name === name) as ProxyConfig || null
+    }
+
+    // Handle legacy format where tunnels are individual sections
     return parsed[name] as ProxyConfig || null
   }
 
@@ -461,13 +498,43 @@ export class FrpProcessManager extends EventEmitter {
     const content = readFileSync(this.configPath, 'utf-8')
     const parsed = parseToml(content)
 
-    if (!parsed[name]) {
+    // Handle [[proxies]] array syntax (modern format)
+    if (Array.isArray(parsed.proxies)) {
+      const tunnelIndex = parsed.proxies.findIndex((p: any) => p && p.name === name)
+      if (tunnelIndex === -1) {
+        throw new FrpBridgeError(`Tunnel ${name} not found`, ErrorCode.NOT_FOUND)
+      }
+
+      const existingTunnel = parsed.proxies[tunnelIndex]
+      const updatedTunnel = { ...existingTunnel, ...proxy }
+
+      // Check if remotePort is being changed and if the new port is already in use
+      const newRemotePort = (proxy as any).remotePort
+      if (newRemotePort && newRemotePort !== (existingTunnel as any).remotePort) {
+        if (this.typeUsesRemotePort(updatedTunnel.type)) {
+          const remotePortInUse = parsed.proxies.some((p: any, idx: number) => {
+            if (idx === tunnelIndex)
+              return false // Skip current tunnel
+            const pRemotePort = (p as any).remotePort
+            return p && pRemotePort === newRemotePort && this.typeUsesRemotePort(p.type)
+          })
+          if (remotePortInUse) {
+            throw new FrpBridgeError(`Remote port ${newRemotePort} is already in use`, ErrorCode.CONFIG_INVALID)
+          }
+        }
+      }
+
+      parsed.proxies[tunnelIndex] = updatedTunnel
+    }
+    // Handle legacy format where tunnels are individual sections
+    else if (parsed[name]) {
+      parsed[name] = { ...parsed[name], ...proxy }
+    }
+    else {
       throw new FrpBridgeError(`Tunnel ${name} not found`, ErrorCode.NOT_FOUND)
     }
 
-    parsed[name] = { ...parsed[name], ...proxy }
     const newContent = toToml(parsed)
-
     writeFileSync(this.configPath, newContent, 'utf-8')
   }
 
@@ -484,9 +551,19 @@ export class FrpProcessManager extends EventEmitter {
     const content = readFileSync(this.configPath, 'utf-8')
     const parsed = parseToml(content)
 
-    delete parsed[name]
-    const newContent = toToml(parsed)
+    // Handle [[proxies]] array syntax (modern format)
+    if (Array.isArray(parsed.proxies)) {
+      const tunnelIndex = parsed.proxies.findIndex((p: any) => p && p.name === name)
+      if (tunnelIndex !== -1) {
+        parsed.proxies.splice(tunnelIndex, 1)
+      }
+    }
+    // Handle legacy format where tunnels are individual sections
+    else if (parsed[name]) {
+      delete parsed[name]
+    }
 
+    const newContent = toToml(parsed)
     writeFileSync(this.configPath, newContent, 'utf-8')
   }
 
@@ -503,11 +580,30 @@ export class FrpProcessManager extends EventEmitter {
     const content = readFileSync(this.configPath, 'utf-8')
     const parsed = parseToml(content)
 
-    // Filter out non-proxy sections (common config)
     const tunnels: ProxyConfig[] = []
-    for (const [_key, value] of Object.entries(parsed)) {
-      if (typeof value === 'object' && value !== null && 'type' in value) {
-        tunnels.push(value as ProxyConfig)
+
+    // Handle [[proxies]] array syntax (modern format)
+    if (Array.isArray(parsed.proxies)) {
+      for (const proxy of parsed.proxies) {
+        if (proxy && typeof proxy === 'object' && 'type' in proxy) {
+          tunnels.push(proxy as ProxyConfig)
+        }
+      }
+    }
+
+    // Also handle legacy format where tunnels are defined as individual sections
+    // e.g., [ssh], [web] instead of [[proxies]]
+    const proxyKeys = new Set(tunnels.map(t => (t as any).name))
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key === 'proxies')
+        continue // Skip the proxies array we already processed
+      if (typeof value === 'object' && value !== null && 'type' in value && !Array.isArray(value)) {
+        // For legacy format, the section name is the proxy name
+        const proxy = { ...value, name: (value as any).name || key } as ProxyConfig
+        if (!proxyKeys.has(proxy.name)) {
+          tunnels.push(proxy)
+          proxyKeys.add(proxy.name)
+        }
       }
     }
 

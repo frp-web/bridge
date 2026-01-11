@@ -23,8 +23,9 @@ cli
   .option('--mode <mode>', 'Mode: client or server', { default: 'client' })
   .option('--version <version>', 'FRP version')
   .action(async (options: { mode: 'client' | 'server', version?: string }) => {
-    const bridge = new FrpBridge({ mode: options.mode, version: options.version })
-    await loadingFunction('Downloading frp binary...', () => bridge.downloadFrpBinary())
+    const bridge = new FrpBridge({ mode: options.mode, process: { version: options.version } })
+    const processManager = bridge.getProcessManager()
+    await loadingFunction('Downloading frp binary...', () => processManager.downloadFrpBinary())
     console.log('Binary downloaded successfully')
   })
 
@@ -37,16 +38,18 @@ cli
     const config: ClientConfig | ServerConfig = JSON.parse(readFileSync(fullPath, 'utf-8'))
 
     const bridge = new FrpBridge({ mode: options.mode })
-    bridge.updateConfig(config)
+    const processManager = bridge.getProcessManager()
 
-    await loadingFunction('Starting frp service...', () => bridge.start())
+    processManager.updateConfig(config)
+
+    await loadingFunction('Starting frp service...', () => processManager.start())
 
     console.log('Service started. Press Ctrl+C to stop.')
 
     // Keep process alive and handle graceful shutdown
     process.on('SIGINT', async () => {
       console.log('\nStopping service...')
-      await bridge.stop()
+      await processManager.stop()
       process.exit(0)
     })
   })
@@ -57,7 +60,8 @@ cli
   .option('--mode <mode>', 'Service mode: client or server', { default: 'client' })
   .action(async (options: { mode: 'client' | 'server' }) => {
     const bridge = new FrpBridge({ mode: options.mode })
-    await bridge.stop()
+    const processManager = bridge.getProcessManager()
+    await processManager.stop()
     console.log('Service stopped')
   })
 
@@ -67,7 +71,8 @@ cli
   .option('--mode <mode>', 'Service mode: client or server', { default: 'client' })
   .action(async (options: { mode: 'client' | 'server' }) => {
     const bridge = new FrpBridge({ mode: options.mode })
-    const path = await bridge.backupConfig()
+    const processManager = bridge.getProcessManager()
+    const path = await processManager.backupConfig()
     console.log(`Backup saved to: ${path}`)
   })
 

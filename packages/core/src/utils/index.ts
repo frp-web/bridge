@@ -130,6 +130,7 @@ export function parseToml(content: string): Record<string, any> {
   const lines = content.split('\n')
   const result: Record<string, any> = {}
   let currentSection = ''
+  let currentArrayItem: Record<string, any> | null = null
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -139,9 +140,27 @@ export function parseToml(content: string): Record<string, any> {
       continue
     }
 
-    // Section header
+    // Array section header [[section]]
+    if (trimmed.startsWith('[[') && trimmed.endsWith(']]')) {
+      const sectionName = trimmed.slice(2, -2).trim()
+      currentSection = sectionName
+
+      // Initialize as array if not exists
+      if (!Array.isArray(result[currentSection])) {
+        result[currentSection] = []
+      }
+
+      // Create new array item
+      currentArrayItem = {}
+      ;(result[currentSection] as any[]).push(currentArrayItem)
+      continue
+    }
+
+    // Regular section header [section]
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      currentSection = trimmed.slice(1, -1)
+      currentSection = trimmed.slice(1, -1).trim()
+      currentArrayItem = null
+
       if (!result[currentSection]) {
         result[currentSection] = {}
       }
@@ -168,7 +187,14 @@ export function parseToml(content: string): Record<string, any> {
         value = Number(value)
 
       if (currentSection) {
-        result[currentSection][key] = value
+        if (currentArrayItem) {
+          // Adding to array item
+          currentArrayItem[key] = value
+        }
+        else {
+          // Adding to regular section
+          result[currentSection][key] = value
+        }
       }
       else {
         result[key] = value
@@ -183,10 +209,25 @@ export function parseToml(content: string): Record<string, any> {
 export function toToml(obj: Record<string, any>): string {
   const lines: string[] = []
 
-  // Process top-level keys first (non-object values)
+  // Process top-level keys first (non-object, non-array values)
   for (const [key, value] of Object.entries(obj)) {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    if (typeof value !== 'object' || value === null) {
       lines.push(formatTomlValue(key, value))
+    }
+  }
+
+  // Process arrays of objects (e.g., [[proxies]])
+  for (const [key, value] of Object.entries(obj)) {
+    if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+      // This is an array of objects, use [[array]] syntax
+      lines.push('')
+      for (const item of value) {
+        lines.push(`[[${key}]]`)
+        for (const [subKey, subValue] of Object.entries(item)) {
+          lines.push(formatTomlValue(subKey, subValue))
+        }
+        lines.push('') // Empty line between array items
+      }
     }
   }
 
@@ -201,7 +242,7 @@ export function toToml(obj: Record<string, any>): string {
     }
   }
 
-  return lines.join('\n')
+  return lines.join('\n').trim()
 }
 
 function formatTomlValue(key: string, value: any): string {
@@ -212,6 +253,8 @@ function formatTomlValue(key: string, value: any): string {
     return `${key} = ${value}`
   }
   if (Array.isArray(value)) {
+    // Only format simple arrays (strings, numbers, booleans)
+    // Object arrays are handled separately in toToml
     return `${key} = [${value.map(v => typeof v === 'string' ? `"${v}"` : v).join(', ')}]`
   }
   return `${key} = "${String(value)}"`
