@@ -574,11 +574,19 @@ export class FrpProcessManager extends EventEmitter {
     }
 
     if (!existsSync(this.configPath)) {
+      this.logger.warn?.('Config file does not exist', { path: this.configPath })
       return []
     }
 
     const content = readFileSync(this.configPath, 'utf-8')
     const parsed = parseToml(content)
+
+    this.logger.info?.('listTunnels - parsed config:', {
+      hasProxies: 'proxies' in parsed,
+      isArray: Array.isArray(parsed.proxies),
+      length: parsed.proxies?.length,
+      proxies: parsed.proxies
+    })
 
     const tunnels: ProxyConfig[] = []
 
@@ -606,6 +614,8 @@ export class FrpProcessManager extends EventEmitter {
         }
       }
     }
+
+    this.logger.info?.('listTunnels - result:', { tunnelCount: tunnels.length, tunnels })
 
     return tunnels
   }
