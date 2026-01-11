@@ -27,15 +27,18 @@ export interface ConfigApplyRawPayload {
 
 export interface ProxyAddPayload {
   proxy: ProxyConfig
+  nodeId?: string // Target node ID (for server mode RPC forwarding)
 }
 
 export interface ProxyUpdatePayload {
   name: string
   proxy: Partial<ProxyConfig>
+  nodeId?: string // Target node ID (for server mode RPC forwarding)
 }
 
 export interface ProxyRemovePayload {
   name: string
+  nodeId?: string // Target node ID (for server mode RPC forwarding)
 }
 
 export interface ProxyGetPayload {
@@ -452,18 +455,13 @@ export class FrpBridge {
       }
     }
 
-    // Proxy/tunnel management commands (client mode only)
-    const proxyAdd: CommandHandler<ProxyAddPayload> = async (command, _ctx) => {
-      if (this.mode !== 'client') {
-        return {
-          status: 'failed',
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'proxy.add is only available in client mode'
-          }
-        }
-      }
+    // Helper function to check if proxy type uses remotePort
+    const typeUsesRemotePort = (type: string): boolean => {
+      return ['tcp', 'udp', 'stcp', 'xtcp', 'sudp', 'tcpmux'].includes(type)
+    }
 
+    // Proxy/tunnel management commands
+    const proxyAdd: CommandHandler<ProxyAddPayload> = async (command, _ctx) => {
       const payload = command.payload
       if (!payload || !payload.proxy) {
         return {
@@ -475,6 +473,63 @@ export class FrpBridge {
         }
       }
 
+      // Server mode: forward to node via RPC or validate globally
+      if (this.mode === 'server') {
+        if (!payload.nodeId) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'proxy.add requires payload.nodeId in server mode'
+            }
+          }
+        }
+
+        // Check global port conflict before forwarding
+        const proxyRemotePort = (payload.proxy as any).remotePort
+        if (proxyRemotePort && typeUsesRemotePort(payload.proxy.type)) {
+          const portCheck = this.nodeManager?.isRemotePortInUse(proxyRemotePort, payload.nodeId)
+          if (portCheck?.inUse) {
+            return {
+              status: 'failed',
+              error: {
+                code: 'PORT_CONFLICT',
+                message: `Remote port ${proxyRemotePort} is already in use by tunnel "${portCheck.tunnelName}" on node ${portCheck.nodeId}`
+              }
+            }
+          }
+        }
+
+        // Forward to node via RPC
+        if (!this.rpcServer) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_NOT_AVAILABLE',
+              message: 'RPC server not available'
+            }
+          }
+        }
+
+        try {
+          const result = await this.rpcServer.rpcCall(payload.nodeId, 'proxy.add', { proxy: payload.proxy })
+          return {
+            status: 'success',
+            result
+          }
+        }
+        catch (error) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_ERROR',
+              message: error instanceof Error ? error.message : 'Failed to add tunnel on node'
+            }
+          }
+        }
+      }
+
+      // Client mode: add locally
       try {
         this.process.addTunnel(payload.proxy)
         return {
@@ -494,16 +549,6 @@ export class FrpBridge {
     }
 
     const proxyUpdate: CommandHandler<ProxyUpdatePayload> = async (command, _ctx) => {
-      if (this.mode !== 'client') {
-        return {
-          status: 'failed',
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'proxy.update is only available in client mode'
-          }
-        }
-      }
-
       const payload = command.payload
       if (!payload || !payload.name) {
         return {
@@ -515,6 +560,62 @@ export class FrpBridge {
         }
       }
 
+      // Server mode: forward to node via RPC
+      if (this.mode === 'server') {
+        if (!payload.nodeId) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'proxy.update requires payload.nodeId in server mode'
+            }
+          }
+        }
+
+        // Check global port conflict if remotePort is being changed
+        const newRemotePort = (payload.proxy as any)?.remotePort
+        if (newRemotePort && typeUsesRemotePort((payload.proxy as any)?.type)) {
+          const portCheck = this.nodeManager?.isRemotePortInUse(newRemotePort, payload.nodeId)
+          if (portCheck?.inUse) {
+            return {
+              status: 'failed',
+              error: {
+                code: 'PORT_CONFLICT',
+                message: `Remote port ${newRemotePort} is already in use by tunnel "${portCheck.tunnelName}" on node ${portCheck.nodeId}`
+              }
+            }
+          }
+        }
+
+        if (!this.rpcServer) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_NOT_AVAILABLE',
+              message: 'RPC server not available'
+            }
+          }
+        }
+
+        try {
+          const result = await this.rpcServer.rpcCall(payload.nodeId, 'proxy.update', { name: payload.name, proxy: payload.proxy })
+          return {
+            status: 'success',
+            result
+          }
+        }
+        catch (error) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_ERROR',
+              message: error instanceof Error ? error.message : 'Failed to update tunnel on node'
+            }
+          }
+        }
+      }
+
+      // Client mode: update locally
       try {
         this.process.updateTunnel(payload.name, payload.proxy)
         return {
@@ -534,16 +635,6 @@ export class FrpBridge {
     }
 
     const proxyRemove: CommandHandler<ProxyRemovePayload> = async (command, _ctx) => {
-      if (this.mode !== 'client') {
-        return {
-          status: 'failed',
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'proxy.remove is only available in client mode'
-          }
-        }
-      }
-
       const payload = command.payload
       if (!payload || !payload.name) {
         return {
@@ -555,6 +646,47 @@ export class FrpBridge {
         }
       }
 
+      // Server mode: forward to node via RPC
+      if (this.mode === 'server') {
+        if (!payload.nodeId) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'proxy.remove requires payload.nodeId in server mode'
+            }
+          }
+        }
+
+        if (!this.rpcServer) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_NOT_AVAILABLE',
+              message: 'RPC server not available'
+            }
+          }
+        }
+
+        try {
+          const result = await this.rpcServer.rpcCall(payload.nodeId, 'proxy.remove', { name: payload.name })
+          return {
+            status: 'success',
+            result
+          }
+        }
+        catch (error) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_ERROR',
+              message: error instanceof Error ? error.message : 'Failed to remove tunnel on node'
+            }
+          }
+        }
+      }
+
+      // Client mode: remove locally
       try {
         this.process.removeTunnel(payload.name)
         return {

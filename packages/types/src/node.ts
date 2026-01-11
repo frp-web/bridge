@@ -3,6 +3,8 @@
  * Defines types for managing frp-bridge client nodes connected to server
  */
 
+import type { ProxyConfig } from './proxy'
+
 /** Node information structure */
 export interface NodeInfo {
   id: string // UUID (assigned by server)
@@ -25,6 +27,7 @@ export interface NodeInfo {
   labels?: Record<string, string> // Custom labels
   metadata?: Record<string, unknown> // Custom metadata
   token?: string // Authentication token
+  tunnels?: ProxyConfig[] // Tunnels associated with this node (managed by server)
   createdAt: number // Creation timestamp (ms)
   updatedAt: number // Last update timestamp (ms)
 }
@@ -54,6 +57,28 @@ export interface NodeHeartbeatPayload {
   lastHeartbeat: number
   cpuCores?: number
   memTotal?: number
+}
+
+/** Payload for tunnel synchronization (Client → Server) */
+export interface TunnelSyncPayload {
+  nodeId: string
+  tunnels: ProxyConfig[]
+  timestamp: number
+}
+
+/** Payload for tunnel management via RPC (Server → Client) */
+export interface TunnelManagePayload {
+  action: 'add' | 'update' | 'remove' | 'list'
+  tunnel?: ProxyConfig | Partial<ProxyConfig>
+  name?: string // For update/remove operations
+}
+
+/** Response for tunnel management */
+export interface TunnelManageResponse {
+  success: boolean
+  tunnel?: ProxyConfig
+  tunnels?: ProxyConfig[]
+  error?: string
 }
 
 /** Query parameters for listing nodes */

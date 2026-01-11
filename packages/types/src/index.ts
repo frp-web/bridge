@@ -39,7 +39,10 @@ export type {
   NodeListQuery,
   NodeListResponse,
   NodeRegisterPayload,
-  NodeStatistics
+  NodeStatistics,
+  TunnelManagePayload,
+  TunnelManageResponse,
+  TunnelSyncPayload
 } from './node'
 
 // Proxy configuration types

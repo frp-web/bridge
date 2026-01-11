@@ -1,6 +1,6 @@
 /**
  * Node Manager for server-side node management
- * Handles node registration, heartbeat, and queries
+ * Handles node registration, heartbeat, tunnel registry, and queries
  */
 
 import type {
@@ -9,7 +9,9 @@ import type {
   NodeListQuery,
   NodeListResponse,
   NodeRegisterPayload,
-  NodeStatistics
+  NodeStatistics,
+  ProxyConfig,
+  TunnelSyncPayload
 } from '@frp-bridge/types'
 import type { RuntimeContext } from '../runtime'
 import { randomUUID } from 'node:crypto'
@@ -32,14 +34,16 @@ export type NodeEvent =
   | 'node:heartbeat'
   | 'node:unregistered'
   | 'node:statusChanged'
+  | 'tunnel:synced'
 
 /**
  * Manages nodes in server mode
- * Stores node info, handles heartbeat, emits events
+ * Stores node info, handles heartbeat, manages global tunnel registry, emits events
  */
 export class NodeManager extends EventEmitter {
   private nodes = new Map<string, NodeInfo>()
   private heartbeatTimers = new Map<string, NodeJS.Timeout>()
+  private tunnelRegistry = new Map<string, ProxyConfig[]>() // nodeId -> tunnels
   private storage?: NodeStorage
   private heartbeatTimeout: number
   private logger?: any
@@ -70,14 +74,6 @@ export class NodeManager extends EventEmitter {
         this.logger?.error?.('Failed to load nodes from storage', { error })
       }
     }
-  }
-
-  async dispose(): Promise<void> {
-    // Clear all heartbeat timers
-    for (const timer of this.heartbeatTimers.values()) {
-      clearTimeout(timer)
-    }
-    this.heartbeatTimers.clear()
   }
 
   /** Register a new node (called when client connects) */
@@ -190,6 +186,7 @@ export class NodeManager extends EventEmitter {
 
     this.nodes.delete(nodeId)
     this.clearHeartbeatTimer(nodeId)
+    this.clearNodeTunnels(nodeId) // Clear tunnels when node disconnects
 
     // Delete from storage if available
     if (this.storage) {
@@ -338,5 +335,94 @@ export class NodeManager extends EventEmitter {
       timestamp: Date.now(),
       payload: { nodeId, oldStatus, newStatus: 'offline', reason: 'heartbeat_timeout' }
     })
+  }
+
+  // ==================== Tunnel Registry Methods ====================
+
+  /** Sync tunnels for a node (called when node connects or updates tunnels) */
+  async syncTunnels(payload: TunnelSyncPayload): Promise<void> {
+    const { nodeId, tunnels, timestamp } = payload
+    const node = this.nodes.get(nodeId)
+
+    if (!node) {
+      this.logger?.warn?.('Tunnel sync failed: node not found', { nodeId })
+      return
+    }
+
+    // Update tunnel registry
+    this.tunnelRegistry.set(nodeId, tunnels)
+
+    // Update node info
+    node.tunnels = tunnels
+    node.updatedAt = timestamp
+
+    // Persist if storage available
+    if (this.storage) {
+      try {
+        await this.storage.save(node)
+      }
+      catch (error) {
+        this.logger?.error?.('Failed to save node after tunnel sync', { nodeId, error })
+      }
+    }
+
+    this.emit('tunnel:synced', {
+      type: 'tunnel:synced',
+      timestamp: Date.now(),
+      payload: { nodeId, tunnelCount: tunnels.length }
+    })
+
+    this.logger?.info?.('Tunnels synced for node', { nodeId, tunnelCount: tunnels.length })
+  }
+
+  /** Get tunnels for a specific node */
+  getNodeTunnels(nodeId: string): ProxyConfig[] {
+    return this.tunnelRegistry.get(nodeId) || []
+  }
+
+  /** Get all tunnels across all nodes */
+  getAllTunnels(): Map<string, ProxyConfig[]> {
+    return new Map(this.tunnelRegistry)
+  }
+
+  /** Check if a remotePort is in use across all nodes (for conflict detection) */
+  isRemotePortInUse(remotePort: number, excludeNodeId?: string): { inUse: boolean, nodeId?: string, tunnelName?: string } {
+    for (const [nodeId, tunnels] of this.tunnelRegistry.entries()) {
+      // Skip the node we're checking (for update operations)
+      if (excludeNodeId && nodeId === excludeNodeId) {
+        continue
+      }
+
+      for (const tunnel of tunnels) {
+        const tunnelRemotePort = (tunnel as any).remotePort
+        if (tunnelRemotePort && tunnelRemotePort === remotePort) {
+          return {
+            inUse: true,
+            nodeId,
+            tunnelName: tunnel.name
+          }
+        }
+      }
+    }
+
+    return { inUse: false }
+  }
+
+  /** Clear tunnels for a node (called when node disconnects) */
+  private clearNodeTunnels(nodeId: string): void {
+    this.tunnelRegistry.delete(nodeId)
+    this.logger?.info?.('Cleared tunnels for node', { nodeId })
+  }
+
+  /** Update dispose method to clear tunnels */
+  async dispose(): Promise<void> {
+    // Clear all heartbeat timers
+    for (const timer of this.heartbeatTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.heartbeatTimers.clear()
+
+    // Clear tunnel registry
+    this.tunnelRegistry.clear()
   }
 }
