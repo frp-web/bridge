@@ -7,14 +7,15 @@ import type { ChildProcess } from 'node:child_process'
 import type { RuntimeLogger } from '../runtime'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { consola } from 'consola'
 import { join } from 'pathe'
 import { BINARY_NAMES } from '../constants'
 import { ErrorCode, FrpBridgeError } from '../errors'
 import { parse as parseToml, stringify as toToml } from '../toml'
-import { commandExists, downloadFile, ensureDir, executeCommand, findExistingVersion, getDownloadUrl, getLatestVersion, getPlatform } from '../utils'
+import { downloadFile, ensureDir, findExistingVersion, getDownloadUrl, getLatestVersion, getPlatform } from '../utils'
+import { PlatformStrategyFactory } from './platform/platform-strategy'
 
 export interface ProcessEvent {
   type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
@@ -70,6 +71,7 @@ export class FrpProcessManager extends EventEmitter {
   private binaryPath: string
   private uptime: number | null = null
   private isManualStop = false
+  private readonly platformStrategy = PlatformStrategyFactory.create()
 
   constructor(options: FrpProcessManagerOptions) {
     super()
@@ -100,8 +102,7 @@ export class FrpProcessManager extends EventEmitter {
 
     const platform = getPlatform()
     const url = getDownloadUrl(this.version!, platform)
-    const isWindows = platform.startsWith('windows_')
-    const archiveExt = isWindows ? 'zip' : 'tar.gz'
+    const archiveExt = this.platformStrategy.getArchiveExtension()
     const archivePath = join(this.workDir, `frp_${this.version}.${archiveExt}`)
     const binDir = join(this.workDir, 'bin', this.version!)
 
@@ -110,27 +111,10 @@ export class FrpProcessManager extends EventEmitter {
     // Download archive
     await downloadFile(url, archivePath)
 
-    // Extract binary
+    // Extract binary using platform strategy
     const extractDir = join(this.workDir, 'temp')
     ensureDir(extractDir)
-
-    if (isWindows) {
-      // Windows: extract zip
-      const hasUnzip = await commandExists('unzip')
-      if (!hasUnzip) {
-        throw new FrpBridgeError('unzip is required for extraction on Windows', ErrorCode.EXTRACTION_FAILED)
-      }
-      await executeCommand(`unzip -o "${archivePath}" -d "${extractDir}"`)
-    }
-    else {
-      // Unix: extract tar.gz
-      const hasGzip = await commandExists('gzip')
-      const hasTar = await commandExists('tar')
-      if (!hasGzip || !hasTar) {
-        throw new FrpBridgeError('gzip and tar are required for extraction', ErrorCode.EXTRACTION_FAILED)
-      }
-      await executeCommand(`tar -xzf "${archivePath}" -C "${extractDir}"`)
-    }
+    await this.platformStrategy.extractArchive(archivePath, extractDir)
 
     // Move binary to destination
     const extractedDir = join(extractDir, `frp_${this.version}_${platform}`)
@@ -144,10 +128,8 @@ export class FrpProcessManager extends EventEmitter {
     const fs = await import('fs-extra')
     await fs.copy(sourceBinary, this.binaryPath)
 
-    // Set executable permission (Unix only)
-    if (!isWindows) {
-      chmodSync(this.binaryPath, 0o755)
-    }
+    // Set executable permission using platform strategy
+    this.platformStrategy.setExecutable(this.binaryPath)
 
     // Cleanup
     await fs.remove(archivePath)
