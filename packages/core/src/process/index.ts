@@ -13,7 +13,8 @@ import { consola } from 'consola'
 import { join } from 'pathe'
 import { BINARY_NAMES } from '../constants'
 import { ErrorCode, FrpBridgeError } from '../errors'
-import { commandExists, downloadFile, ensureDir, executeCommand, findExistingVersion, getDownloadUrl, getLatestVersion, getPlatform, parseToml, toToml } from '../utils'
+import { parse as parseToml, stringify as toToml } from '../toml'
+import { commandExists, downloadFile, ensureDir, executeCommand, findExistingVersion, getDownloadUrl, getLatestVersion, getPlatform } from '../utils'
 
 export interface ProcessEvent {
   type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'

@@ -34,6 +34,7 @@
     "execa": "^9.6.0",
     "fs-extra": "^11.3.2",
     "pathe": "^2.0.3",
+    "smol-toml": "^1.6.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

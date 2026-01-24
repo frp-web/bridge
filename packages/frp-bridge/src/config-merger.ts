@@ -6,7 +6,7 @@
 import type { ProxyConfig } from '@frp-bridge/types'
 import type { PresetConfig } from './preset-config'
 import { writeFileSync } from 'node:fs'
-import { ensureDir } from '@frp-bridge/core'
+import { ensureDir, stringify as toToml } from '@frp-bridge/core'
 
 /**
  * 合并预设配置和用户配置，生成最终的 TOML 配置
@@ -119,35 +119,7 @@ function tunnelsToToml(tunnels: ProxyConfig[]): string {
     return ''
   }
 
-  const lines: string[] = []
-
-  for (const tunnel of tunnels) {
-    lines.push('')
-    lines.push('[[proxies]]')
-    for (const [key, value] of Object.entries(tunnel)) {
-      if (value === undefined || value === null)
-        continue
-      if (typeof value === 'string') {
-        lines.push(`${key} = "${value}"`)
-      }
-      else if (typeof value === 'number' || typeof value === 'boolean') {
-        lines.push(`${key} = ${value}`)
-      }
-      else if (typeof value === 'object') {
-        lines.push(`[${key}]`)
-        for (const [subKey, subValue] of Object.entries(value)) {
-          if (typeof subValue === 'string') {
-            lines.push(`${subKey} = "${subValue}"`)
-          }
-          else {
-            lines.push(`${subKey} = ${subValue}`)
-          }
-        }
-      }
-    }
-  }
-
-  return lines.join('\n')
+  return toToml({ proxies: tunnels })
 }
 
 /**
@@ -175,34 +147,7 @@ function extractProxiesSection(lines: string[]): string[] {
  * 将配置对象转换为 TOML 格式
  */
 export function configToToml(config: Record<string, any>): string {
-  const lines: string[] = []
-
-  for (const [key, value] of Object.entries(config)) {
-    if (value === undefined || value === null) {
-      continue
-    }
-
-    if (typeof value === 'string') {
-      lines.push(`${key} = "${value}"`)
-    }
-    else if (typeof value === 'number' || typeof value === 'boolean') {
-      lines.push(`${key} = ${value}`)
-    }
-    else if (typeof value === 'object') {
-      // 嵌套对象
-      lines.push(`[${key}]`)
-      for (const [subKey, subValue] of Object.entries(value)) {
-        if (typeof subValue === 'string') {
-          lines.push(`${subKey} = "${subValue}"`)
-        }
-        else if (typeof subValue === 'number' || typeof subValue === 'boolean') {
-          lines.push(`${subKey} = ${subValue}`)
-        }
-      }
-    }
-  }
-
-  return lines.join('\n')
+  return toToml(config)
 }
 
 /**

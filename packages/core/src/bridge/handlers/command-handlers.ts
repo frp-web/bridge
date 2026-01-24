@@ -100,7 +100,7 @@ export function createConfigApplyRawCommand(deps: CommandDependencies): CommandH
     }
 
     try {
-      const { parseToml } = await import('../../utils')
+      const { parse: parseToml } = await import('../../toml')
       parseToml(content)
     }
     catch (error) {
