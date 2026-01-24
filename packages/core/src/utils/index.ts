@@ -3,7 +3,7 @@
  */
 
 import { exec as execCallback } from 'node:child_process'
-import { createWriteStream, existsSync, mkdirSync } from 'node:fs'
+import { createWriteStream, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { get as httpsGet } from 'node:https'
 import process from 'node:process'
@@ -122,6 +122,26 @@ export async function commandExists(command: string): Promise<boolean> {
 export function ensureDir(dirPath: string): void {
   if (!existsSync(dirPath)) {
     mkdirSync(dirPath, { recursive: true })
+  }
+}
+
+/** Find existing FRP version in work directory */
+export function findExistingVersion(workDir: string): string | null {
+  const binDir = `${workDir}/bin`
+
+  if (!existsSync(binDir)) {
+    return null
+  }
+
+  try {
+    const versions = readdirSync(binDir, { withFileTypes: true })
+      .filter((d: any) => d.isDirectory())
+      .map((d: any) => d.name)
+
+    return versions.length > 0 ? versions[0] : null
+  }
+  catch {
+    return null
   }
 }
 

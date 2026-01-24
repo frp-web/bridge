@@ -13,7 +13,7 @@ import { consola } from 'consola'
 import { join } from 'pathe'
 import { BINARY_NAMES } from '../constants'
 import { ErrorCode, FrpBridgeError } from '../errors'
-import { commandExists, downloadFile, ensureDir, executeCommand, getDownloadUrl, getLatestVersion, getPlatform, parseToml, toToml } from '../utils'
+import { commandExists, downloadFile, ensureDir, executeCommand, findExistingVersion, getDownloadUrl, getLatestVersion, getPlatform, parseToml, toToml } from '../utils'
 
 export interface ProcessEvent {
   type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
@@ -86,7 +86,8 @@ export class FrpProcessManager extends EventEmitter {
   /** Ensure version is fetched and binary path is set */
   private async ensureVersion(): Promise<void> {
     if (!this.version) {
-      this.version = this.specifiedVersion || await getLatestVersion()
+      // 优先使用指定版本，否则查找已有版本，不尝试获取最新版本
+      this.version = this.specifiedVersion || findExistingVersion(this.workDir) || ''
       const binaryName = this.mode === 'client' ? BINARY_NAMES.client : BINARY_NAMES.server
       this.binaryPath = join(this.workDir, 'bin', this.version, binaryName)
     }
