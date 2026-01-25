@@ -4,6 +4,7 @@
  */
 
 import type { CommandHandler, CommandResult } from '../../runtime'
+import { ProxyType } from '@frp-bridge/types'
 import { ModeError, ValidationError } from '../../errors'
 
 /**
@@ -261,4 +262,158 @@ export const Validators = {
     }
     return { valid: true }
   }
+}
+
+/**
+ * 检查代理类型是否使用 remotePort
+ */
+function typeUsesRemotePort(type: string): boolean {
+  return [
+    ProxyType.TCP,
+    ProxyType.UDP,
+    ProxyType.STCP,
+    ProxyType.XTCP,
+    ProxyType.SUDP,
+    ProxyType.TCPMUX
+  ].includes(type as ProxyType)
+}
+
+/**
+ * 模式路由装饰器
+ * Server 模式：通过 RPC 转发到节点
+ * Client 模式：本地执行
+ */
+export function withModeRouting<T extends { nodeId?: string }>(
+  localHandler: (payload: T, deps: CommandDependencies) => Promise<CommandResult>,
+  rpcMethod: string,
+  transformPayload?: (payload: T) => any
+): (handler: CommandHandler<T>, deps: CommandDependencies) => CommandHandler<T> {
+  return (_handler, deps) => {
+    return async (command, _ctx) => {
+      const payload = command.payload as T
+
+      if (deps.mode === 'server') {
+        // Server 模式：验证 nodeId 并通过 RPC 转发
+        if (!payload.nodeId) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: `nodeId is required in server mode`
+            }
+          }
+        }
+
+        if (!deps.rpcServer) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_NOT_AVAILABLE',
+              message: 'RPC server is not available'
+            }
+          }
+        }
+
+        try {
+          const rpcPayload = transformPayload ? transformPayload(payload) : payload
+          const result = await deps.rpcServer.rpcCall(payload.nodeId, rpcMethod, rpcPayload)
+          return {
+            status: 'success',
+            result
+          }
+        }
+        catch (error) {
+          return {
+            status: 'failed',
+            error: {
+              code: 'RPC_ERROR',
+              message: error instanceof Error ? error.message : `RPC call failed`
+            }
+          }
+        }
+      }
+
+      // Client 模式：执行本地处理器
+      return localHandler(payload, deps)
+    }
+  }
+}
+
+/**
+ * 端口冲突检查装饰器
+ * 检查远程端口是否已在所有节点上被使用
+ */
+export function withPortConflictCheck<T extends { proxy?: { remotePort?: number, type?: string }, nodeId?: string }>(
+  handler: CommandHandler<T>,
+  deps: CommandDependencies
+): CommandHandler<T> {
+  return async (command, ctx) => {
+    const payload = command.payload as T
+    const proxy = payload.proxy as any
+
+    if (proxy?.remotePort && proxy?.type && typeUsesRemotePort(proxy.type)) {
+      const portCheck = deps.nodeManager?.isRemotePortInUse(proxy.remotePort, payload.nodeId)
+      if (portCheck?.inUse) {
+        return {
+          status: 'failed',
+          error: {
+            code: 'PORT_CONFLICT',
+            message: `Remote port ${proxy.remotePort} is already in use by tunnel "${portCheck.tunnelName}" on node ${portCheck.nodeId}`
+          }
+        }
+      }
+    }
+
+    return handler(command, ctx)
+  }
+}
+
+/**
+ * 预构建的装饰器组合
+ */
+export const presets = {
+  /**
+   * 标准 server-only 处理器，带错误处理
+   */
+  serverOnly: <T>(handler: CommandHandler<T>, deps: CommandDependencies) =>
+    compose<T>(
+      withErrorHandling,
+      withNodeManager,
+      withServerModeOnly
+    )(handler, deps),
+
+  /**
+   * 标准 client-only 处理器，带错误处理
+   */
+  clientOnly: <T>(handler: CommandHandler<T>, deps: CommandDependencies) =>
+    compose<T>(
+      withErrorHandling,
+      withClientModeOnly
+    )(handler, deps),
+
+  /**
+   * 带验证和错误处理的处理器
+   */
+  withValidation: <T>(
+    validator: Validator<T>,
+    handler: CommandHandler<T>,
+    deps: CommandDependencies
+  ) =>
+    compose<T>(
+      withErrorHandling,
+      withValidation(validator)
+    )(handler, deps),
+
+  /**
+   * Server 处理器，带必需字段验证
+   */
+  serverWithRequired: <T extends Record<string, any>>(
+    ...fields: (keyof T & string)[]
+  ) => (handler: CommandHandler<T>, deps: CommandDependencies) =>
+    compose<T>(
+      withErrorHandling,
+      withNodeManager,
+      withServerModeOnly,
+      withValidation<T>(Validators.all<T>(...fields.map(f => Validators.string<T>(f))))
+    )(handler, deps)
 }

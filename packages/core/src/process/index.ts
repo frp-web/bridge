@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { ProxyType } from '@frp-bridge/types'
 import { consola } from 'consola'
 import { join } from 'pathe'
 import { BINARY_NAMES } from '../constants'
@@ -444,7 +445,14 @@ export class FrpProcessManager extends EventEmitter {
 
   /** Check if proxy type uses remotePort */
   private typeUsesRemotePort(type: string): boolean {
-    return ['tcp', 'udp', 'stcp', 'xtcp', 'sudp', 'tcpmux'].includes(type)
+    return [
+      ProxyType.TCP,
+      ProxyType.UDP,
+      ProxyType.STCP,
+      ProxyType.XTCP,
+      ProxyType.SUDP,
+      ProxyType.TCPMUX
+    ].includes(type as ProxyType)
   }
 
   /** Get tunnel by name */

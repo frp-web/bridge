@@ -3,8 +3,28 @@
  * Based on: https://gofrp.org/zh-cn/docs/reference/proxy-config/
  */
 
-/** Proxy type */
-export type ProxyType = 'tcp' | 'udp' | 'http' | 'https' | 'tcpmux' | 'stcp' | 'xtcp' | 'sudp'
+/** Proxy type enum */
+export enum ProxyType {
+  /** TCP proxy */
+  TCP = 'tcp',
+  /** UDP proxy */
+  UDP = 'udp',
+  /** HTTP proxy */
+  HTTP = 'http',
+  /** HTTPS proxy */
+  HTTPS = 'https',
+  /** TCP multiplexer proxy */
+  TCPMUX = 'tcpmux',
+  /** Secure TCP proxy */
+  STCP = 'stcp',
+  /** XTCP (P2P) proxy */
+  XTCP = 'xtcp',
+  /** Secure UDP proxy */
+  SUDP = 'sudp'
+}
+
+/** Proxy type (union type for compatibility) */
+export type ProxyTypeUnion = `${ProxyType}`
 
 /** Load balancer strategy */
 export type LoadBalancerStrategy = 'random' | 'round_robin'
@@ -30,7 +50,7 @@ export interface BaseProxyConfig {
     /** Health check configuration */
     healthCheck?: {
       /** Health check type */
-      type?: 'tcp' | 'http'
+      type?: ProxyType.TCP | ProxyType.HTTP
       /** Health check timeout (seconds) */
       timeoutSeconds?: number
       /** Max failed checks before marking unhealthy */
@@ -52,21 +72,21 @@ export interface BaseProxyConfig {
 
 /** TCP proxy configuration */
 export interface TCPProxyConfig extends BaseProxyConfig {
-  type: 'tcp'
+  type: ProxyType.TCP
   /** Remote port on server */
   remotePort?: number
 }
 
 /** UDP proxy configuration */
 export interface UDPProxyConfig extends BaseProxyConfig {
-  type: 'udp'
+  type: ProxyType.UDP
   /** Remote port on server */
   remotePort?: number
 }
 
 /** HTTP proxy configuration */
 export interface HTTPProxyConfig extends BaseProxyConfig {
-  type: 'http'
+  type: ProxyType.HTTP
   /** Custom domain names */
   customDomains?: string[]
   /** Subdomain under server's subdomain_host */
@@ -93,7 +113,7 @@ export interface HTTPProxyConfig extends BaseProxyConfig {
 
 /** HTTPS proxy configuration */
 export interface HTTPSProxyConfig extends BaseProxyConfig {
-  type: 'https'
+  type: ProxyType.HTTPS
   /** Custom domain names */
   customDomains?: string[]
   /** Subdomain under server's subdomain_host */
@@ -102,7 +122,7 @@ export interface HTTPSProxyConfig extends BaseProxyConfig {
 
 /** TCPMUX proxy configuration */
 export interface TCPMUXProxyConfig extends BaseProxyConfig {
-  type: 'tcpmux'
+  type: ProxyType.TCPMUX
   /** Multiplexer type */
   multiplexer?: 'httpconnect'
   /** Custom domain names */
@@ -119,7 +139,7 @@ export interface TCPMUXProxyConfig extends BaseProxyConfig {
 
 /** STCP proxy configuration */
 export interface STCPProxyConfig extends BaseProxyConfig {
-  type: 'stcp'
+  type: ProxyType.STCP
   /** Secret key shared with visitor */
   secretKey?: string
   /** Allowed visitor users */
@@ -128,7 +148,7 @@ export interface STCPProxyConfig extends BaseProxyConfig {
 
 /** XTCP proxy configuration */
 export interface XTCPProxyConfig extends BaseProxyConfig {
-  type: 'xtcp'
+  type: ProxyType.XTCP
   /** Secret key shared with visitor */
   secretKey?: string
   /** Allowed visitor users */
@@ -137,7 +157,7 @@ export interface XTCPProxyConfig extends BaseProxyConfig {
 
 /** SUDP proxy configuration */
 export interface SUDPProxyConfig extends BaseProxyConfig {
-  type: 'sudp'
+  type: ProxyType.SUDP
   /** Secret key shared with visitor */
   secretKey?: string
   /** Allowed visitor users */
@@ -155,8 +175,18 @@ export type ProxyConfig =
   | XTCPProxyConfig
   | SUDPProxyConfig
 
-/** Visitor type */
-export type VisitorType = 'stcp' | 'xtcp' | 'sudp'
+/** Visitor type enum */
+export enum VisitorType {
+  /** Secure TCP visitor */
+  STCP = 'stcp',
+  /** XTCP (P2P) visitor */
+  XTCP = 'xtcp',
+  /** Secure UDP visitor */
+  SUDP = 'sudp'
+}
+
+/** Visitor type (union type for compatibility) */
+export type VisitorTypeUnion = `${VisitorType}`
 
 /** Base visitor configuration */
 export interface BaseVisitorConfig {
@@ -176,12 +206,12 @@ export interface BaseVisitorConfig {
 
 /** STCP visitor configuration */
 export interface STCPVisitorConfig extends BaseVisitorConfig {
-  type: 'stcp'
+  type: VisitorType.STCP
 }
 
 /** XTCP visitor configuration */
 export interface XTCPVisitorConfig extends BaseVisitorConfig {
-  type: 'xtcp'
+  type: VisitorType.XTCP
   /** Keep tunnel alive even when no connection */
   keepTunnelOpen?: boolean
   /** Max retries for establishing connection */
@@ -196,7 +226,7 @@ export interface XTCPVisitorConfig extends BaseVisitorConfig {
 
 /** SUDP visitor configuration */
 export interface SUDPVisitorConfig extends BaseVisitorConfig {
-  type: 'sudp'
+  type: VisitorType.SUDP
 }
 
 /** Union type of all visitor configurations */

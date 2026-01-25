@@ -53,7 +53,7 @@ export type {
   HTTPSProxyConfig,
   LoadBalancerStrategy,
   ProxyConfig,
-  ProxyType,
+  ProxyTypeUnion,
   STCPProxyConfig,
   STCPVisitorConfig,
   SUDPProxyConfig,
@@ -62,10 +62,13 @@ export type {
   TCPProxyConfig,
   UDPProxyConfig,
   VisitorConfig,
-  VisitorType,
+  VisitorTypeUnion,
   XTCPProxyConfig,
   XTCPVisitorConfig
 } from './proxy'
+
+// Export enums as values (required for runtime usage)
+export { ProxyType, VisitorType } from './proxy'
 
 // RPC types
 export type {
