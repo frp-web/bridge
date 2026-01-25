@@ -201,7 +201,6 @@ export class FrpBridgeInitializer {
       result.rpcClient = new RpcClient({
         url: urlWithToken,
         nodeId: rpcOptions.clientNodeId,
-        reconnectInterval: rpcOptions.clientReconnectInterval,
         getRegisterPayload: rpcOptions.getRegisterPayload ?? (async () => {
           throw new Error('rpc getRegisterPayload is required in client mode')
         }),

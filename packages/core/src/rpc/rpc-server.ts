@@ -1,7 +1,9 @@
 import type { NodeInfo, RpcRequest, RpcResponse } from '@frp-bridge/types'
 import type { IncomingMessage } from 'node:http'
+import type { RegisterMessage } from './message-types'
 import { randomUUID } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
+import { isPongMessage, isRegisterMessage, isRpcResponse } from './message-types'
 import { safeParse } from './utils'
 
 interface PendingRequest {
@@ -103,36 +105,39 @@ export class RpcServer {
       return
     }
 
-    if (msg.type === 'register') {
-      const nodeId: string | undefined = msg.nodeId
-      if (!nodeId) {
-        ws.close()
-        return
-      }
-
-      const allowed = this.options.validateToken ? await this.options.validateToken(token, nodeId) : true
-      if (!allowed) {
-        ws.close()
-        return
-      }
-
-      this.clients.set(nodeId, ws)
-      this.wsToNode.set(ws, nodeId)
-
-      const payload = msg.payload as NodeInfo | undefined
-      if (payload && this.options.onRegister) {
-        await this.options.onRegister(nodeId, payload)
-      }
-
+    if (isRegisterMessage(msg)) {
+      await this.handleRegister(ws, msg, token)
       return
     }
 
-    if (msg.type === 'pong') {
+    if (isPongMessage(msg)) {
       return
     }
 
-    if (msg.id && msg.status) {
-      this.handleRpcResponse(msg as RpcResponse)
+    if (isRpcResponse(msg)) {
+      this.handleRpcResponse(msg)
+    }
+  }
+
+  private async handleRegister(ws: WebSocket, msg: RegisterMessage, token?: string): Promise<void> {
+    const { nodeId } = msg
+    if (!nodeId) {
+      ws.close()
+      return
+    }
+
+    const allowed = this.options.validateToken ? await this.options.validateToken(token, nodeId) : true
+    if (!allowed) {
+      ws.close()
+      return
+    }
+
+    this.clients.set(nodeId, ws)
+    this.wsToNode.set(ws, nodeId)
+
+    const payload = msg.payload as unknown
+    if (payload && this.options.onRegister) {
+      await this.options.onRegister(nodeId, payload as NodeInfo)
     }
   }
 

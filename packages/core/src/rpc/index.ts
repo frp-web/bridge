@@ -1,2 +1,5 @@
+export * from './message-types'
+export * from './middleware'
+export * from './reconnect-strategy'
 export { RpcClient, type RpcClientOptions } from './rpc-client'
 export { RpcServer, type RpcServerOptions } from './rpc-server'

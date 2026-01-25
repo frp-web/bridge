@@ -1,5 +1,8 @@
 import type { NodeInfo, RpcRequest } from '@frp-bridge/types'
+import type { ReconnectStrategy } from './reconnect-strategy'
 import { WebSocket } from 'ws'
+import { isPingMessage, isRpcRequest } from './message-types'
+import { ExponentialBackoffStrategy } from './reconnect-strategy'
 import { safeParse } from './utils'
 
 export interface RpcClientOptions {
@@ -7,7 +10,7 @@ export interface RpcClientOptions {
   nodeId: string
   getRegisterPayload: () => Promise<NodeInfo> | NodeInfo
   handleRequest: (req: RpcRequest) => Promise<unknown>
-  reconnectInterval?: number
+  reconnectStrategy?: ReconnectStrategy
   logger?: {
     info?: (msg: string, data?: unknown) => void
     warn?: (msg: string, data?: unknown) => void
@@ -18,13 +21,15 @@ export interface RpcClientOptions {
 export class RpcClient {
   private ws: WebSocket | null = null
   private reconnectTimer?: NodeJS.Timeout
-  private readonly reconnectInterval: number
+  private reconnectAttempt = 0
+  private readonly reconnectStrategy: ReconnectStrategy
 
   constructor(private readonly options: RpcClientOptions) {
-    this.reconnectInterval = options.reconnectInterval ?? 5000
+    this.reconnectStrategy = options.reconnectStrategy ?? new ExponentialBackoffStrategy()
   }
 
   async connect(): Promise<void> {
+    this.reconnectAttempt = 0
     await this.createConnection()
   }
 
@@ -44,6 +49,7 @@ export class RpcClient {
         try {
           const payload = await this.options.getRegisterPayload()
           this.send({ type: 'register', nodeId: this.options.nodeId, payload })
+          this.reconnectAttempt = 0 // Reset on successful connection
           resolve()
         }
         catch (error) {
@@ -76,13 +82,13 @@ export class RpcClient {
       return
     }
 
-    if (msg.type === 'ping') {
-      this.send({ type: 'pong', timestamp: Date.now() })
+    if (isPingMessage(msg)) {
+      this.send({ type: 'pong' as const, timestamp: Date.now() })
       return
     }
 
-    if (msg.method) {
-      await this.handleRpcRequest(msg as RpcRequest)
+    if (isRpcRequest(msg)) {
+      await this.handleRpcRequest(msg)
     }
   }
 
@@ -110,12 +116,24 @@ export class RpcClient {
     if (this.reconnectTimer) {
       return
     }
+
+    // Check if should reconnect
+    if (!this.reconnectStrategy.shouldReconnect(this.reconnectAttempt)) {
+      this.reconnectStrategy.onMaxAttemptsReached()
+      return
+    }
+
+    const delay = this.reconnectStrategy.getDelay(this.reconnectAttempt)
+    this.reconnectAttempt++
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined
       this.createConnection().catch((error) => {
         this.options.logger?.error?.('rpc client reconnect failed', error)
         this.scheduleReconnect()
       })
-    }, this.reconnectInterval)
+    }, delay)
+
+    this.options.logger?.info?.(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`)
   }
 }
