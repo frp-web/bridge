@@ -5,7 +5,7 @@
 
 import { chmodSync } from 'node:fs'
 import process from 'node:process'
-import { ErrorCode, FrpBridgeError } from '../../errors'
+import { ExtractionFailedError } from '../../errors'
 import { commandExists, executeCommand } from '../../utils'
 
 export interface PlatformStrategy {
@@ -35,7 +35,7 @@ export class WindowsPlatformStrategy implements PlatformStrategy {
   async extractArchive(archivePath: string, targetDir: string): Promise<void> {
     const hasUnzip = await commandExists('unzip')
     if (!hasUnzip) {
-      throw new FrpBridgeError('unzip is required for extraction on Windows', ErrorCode.EXTRACTION_FAILED)
+      throw new ExtractionFailedError('unzip is required for extraction on Windows')
     }
     await executeCommand(`unzip -o "${archivePath}" -d "${targetDir}"`)
   }
@@ -57,7 +57,7 @@ export class UnixPlatformStrategy implements PlatformStrategy {
     const hasGzip = await commandExists('gzip')
     const hasTar = await commandExists('tar')
     if (!hasGzip || !hasTar) {
-      throw new FrpBridgeError('gzip and tar are required for extraction', ErrorCode.EXTRACTION_FAILED)
+      throw new ExtractionFailedError('gzip and tar are required for extraction')
     }
     await executeCommand(`tar -xzf "${archivePath}" -C "${targetDir}"`)
   }

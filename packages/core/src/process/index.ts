@@ -1,22 +1,32 @@
 /**
  * FRP process management utilities
+ *
+ * This class serves as a facade that delegates to specialized components:
+ * - ProcessController: Process lifecycle management
+ * - ConfigurationStore: Configuration file operations
+ * - TunnelManager: Tunnel/proxy management
+ * - NodeManager: Node information management
+ * - BinaryManager: Binary file management
  */
 
 import type { ClientConfig, ProxyConfig, ServerConfig } from '@frp-bridge/types'
 import type { ChildProcess } from 'node:child_process'
 import type { RuntimeLogger } from '../runtime'
-import { spawn } from 'node:child_process'
+import type { NodeInfo as NewNodeInfo, ProcessControllerEvent } from './controllers'
 import { EventEmitter } from 'node:events'
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { ProxyType } from '@frp-bridge/types'
 import { consola } from 'consola'
 import { join } from 'pathe'
-import { BINARY_NAMES } from '../constants'
-import { ErrorCode, FrpBridgeError } from '../errors'
-import { parse as parseToml, stringify as toToml } from '../toml'
-import { downloadFile, ensureDir, findExistingVersion, getDownloadUrl, getLatestVersion, getPlatform } from '../utils'
-import { PlatformStrategyFactory } from './platform/platform-strategy'
+import { ConfigNotFoundError, ModeError } from '../errors'
+
+// Import refactored components
+import {
+  BinaryManager,
+  ConfigurationStore,
+  NodeManager,
+  ProcessController,
+  TunnelManager
+} from './controllers'
 
 export interface ProcessEvent {
   type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
@@ -60,19 +70,32 @@ export interface NodeInfo {
 
 /**
  * Manages FRP client/server lifecycle, config, and tunnels
+ *
+ * This class now serves as a facade that delegates to specialized components:
+ * - ProcessController: Process lifecycle management
+ * - ConfigurationStore: Configuration file operations
+ * - TunnelManager: Tunnel/proxy management
+ * - NodeManager: Node information management
+ * - BinaryManager: Binary file management
  */
 export class FrpProcessManager extends EventEmitter {
   private readonly workDir: string
-  private version: string | null = null
   private readonly mode: 'client' | 'server'
   private readonly specifiedVersion?: string
   private readonly logger: RuntimeLogger
+  private readonly configPath: string
+
+  // Component instances
+  private readonly processController: ProcessController
+  private readonly configStore: ConfigurationStore
+  private readonly binaryManager: BinaryManager
+  private tunnelManager: TunnelManager | null = null
+  private nodeManager: NodeManager | null = null
+
+  // Process state tracking
   private process: ChildProcess | null = null
-  private configPath: string
-  private binaryPath: string
   private uptime: number | null = null
   private isManualStop = false
-  private readonly platformStrategy = PlatformStrategyFactory.create()
 
   constructor(options: FrpProcessManagerOptions) {
     super()
@@ -82,114 +105,89 @@ export class FrpProcessManager extends EventEmitter {
     this.configPath = options.configPath || join(this.workDir, `frp${this.mode === 'client' ? 'c' : 's'}.toml`)
     this.logger = options.logger ?? consola.withTag('FrpProcessManager')
 
-    ensureDir(this.workDir)
-    // Binary path will be set after version is determined
-    this.binaryPath = ''
+    // Initialize components
+    this.configStore = new ConfigurationStore({ logger: this.logger })
+    this.processController = new ProcessController({ logger: this.logger })
+    this.binaryManager = new BinaryManager({
+      workDir: this.workDir,
+      mode: this.mode,
+      logger: this.logger
+    })
+
+    // Initialize conditional components
+    if (this.mode === 'client') {
+      this.tunnelManager = new TunnelManager({
+        configStore: this.configStore,
+        configPath: this.configPath,
+        logger: this.logger
+      })
+
+      this.nodeManager = new NodeManager({
+        configStore: this.configStore,
+        configPath: this.configPath,
+        logger: this.logger
+      })
+    }
+
+    // Forward process controller events
+    this.processController.on('process:started', (event: ProcessControllerEvent) => {
+      this.emit(event.type, event as ProcessEvent)
+    })
+
+    this.processController.on('process:stopped', (event: ProcessControllerEvent) => {
+      this.emit(event.type, event as ProcessEvent)
+    })
+
+    this.processController.on('process:exited', (event: ProcessControllerEvent) => {
+      this.emit(event.type, event as ProcessEvent)
+    })
+
+    this.processController.on('process:error', (event: ProcessControllerEvent) => {
+      this.emit(event.type, event as ProcessEvent)
+    })
   }
 
   /** Ensure version is fetched and binary path is set */
-  private async ensureVersion(): Promise<void> {
-    if (!this.version) {
-      // 优先使用指定版本，否则查找已有版本，不尝试获取最新版本
-      this.version = this.specifiedVersion || findExistingVersion(this.workDir) || ''
-      const binaryName = this.mode === 'client' ? BINARY_NAMES.client : BINARY_NAMES.server
-      this.binaryPath = join(this.workDir, 'bin', this.version, binaryName)
-    }
+  private async ensureVersion(): Promise<string> {
+    const binaryPath = await this.binaryManager.ensureInstalled(this.specifiedVersion)
+    return binaryPath
   }
 
   /** Download FRP binary for current platform */
   async downloadFrpBinary(): Promise<void> {
-    await this.ensureVersion()
-
-    const platform = getPlatform()
-    const url = getDownloadUrl(this.version!, platform)
-    const archiveExt = this.platformStrategy.getArchiveExtension()
-    const archivePath = join(this.workDir, `frp_${this.version}.${archiveExt}`)
-    const binDir = join(this.workDir, 'bin', this.version!)
-
-    ensureDir(binDir)
-
-    // Download archive
-    await downloadFile(url, archivePath)
-
-    // Extract binary using platform strategy
-    const extractDir = join(this.workDir, 'temp')
-    ensureDir(extractDir)
-    await this.platformStrategy.extractArchive(archivePath, extractDir)
-
-    // Move binary to destination
-    const extractedDir = join(extractDir, `frp_${this.version}_${platform}`)
-    const sourceBinary = join(extractedDir, this.mode === 'client' ? BINARY_NAMES.client : BINARY_NAMES.server)
-
-    if (!existsSync(sourceBinary)) {
-      throw new FrpBridgeError(`Binary not found: ${sourceBinary}`, ErrorCode.BINARY_NOT_FOUND)
-    }
-
-    // Copy to destination
-    const fs = await import('fs-extra')
-    await fs.copy(sourceBinary, this.binaryPath)
-
-    // Set executable permission using platform strategy
-    this.platformStrategy.setExecutable(this.binaryPath)
-
-    // Cleanup
-    await fs.remove(archivePath)
-    await fs.remove(extractDir)
+    await this.binaryManager.download()
   }
 
   /** Update FRP binary to latest version */
   async updateFrpBinary(newVersion?: string): Promise<void> {
-    await this.ensureVersion()
-
-    const targetVersion = newVersion || await getLatestVersion()
-
-    if (targetVersion === this.version) {
-      return
-    }
-
-    // Backup current binary if exists
-    if (existsSync(this.binaryPath)) {
-      const backupPath = `${this.binaryPath}.bak`
-      const fs = await import('fs-extra')
-      await fs.copy(this.binaryPath, backupPath)
-    }
-
-    // Update version and binary path
-    this.version = targetVersion
-    const binaryName = this.mode === 'client' ? BINARY_NAMES.client : BINARY_NAMES.server
-    this.binaryPath = join(this.workDir, 'bin', this.version, binaryName)
-
-    await this.downloadFrpBinary()
+    const targetVersion = newVersion || await this.binaryManager.getLatest()
+    await this.binaryManager.update(targetVersion)
   }
 
   /** Check if binary exists */
   hasBinary(): boolean {
-    return existsSync(this.binaryPath)
+    return this.binaryManager.hasBinary()
   }
 
   /** Get current configuration */
-  getConfig(): ClientConfig | ServerConfig | null {
-    if (!existsSync(this.configPath)) {
+  async getConfig(): Promise<ClientConfig | ServerConfig | null> {
+    if (!this.configStore.exists(this.configPath)) {
       return null
     }
-
-    const content = readFileSync(this.configPath, 'utf-8')
-    return parseToml(content) as ClientConfig | ServerConfig
+    return this.configStore.load(this.configPath) as Promise<ClientConfig | ServerConfig | null>
   }
 
   /** Update configuration */
-  updateConfig(config: Partial<ClientConfig | ServerConfig>): void {
-    const current = this.getConfig()
-    const merged = { ...current, ...config }
-    const content = toToml(merged)
-
-    writeFileSync(this.configPath, content, 'utf-8')
+  async updateConfig(config: Partial<ClientConfig | ServerConfig>): Promise<void> {
+    const current = await this.getConfig()
+    const merged = this.configStore.merge(current || {}, config)
+    await this.configStore.save(this.configPath, merged)
   }
 
   /** Backup configuration */
   async backupConfig(): Promise<string> {
-    if (!existsSync(this.configPath)) {
-      throw new FrpBridgeError('Config file does not exist', ErrorCode.CONFIG_NOT_FOUND)
+    if (!this.configStore.exists(this.configPath)) {
+      throw new ConfigNotFoundError('Config file does not exist')
     }
 
     const timestamp = Date.now()
@@ -208,24 +206,17 @@ export class FrpProcessManager extends EventEmitter {
 
   /** Read raw config file contents */
   getConfigRaw(): string | null {
-    if (!existsSync(this.configPath)) {
-      return null
-    }
-    return readFileSync(this.configPath, 'utf-8')
+    return this.configStore.getRaw(this.configPath)
   }
 
   /** Overwrite config file with provided content */
   updateConfigRaw(content: string): void {
-    const targetDir = this.configPath.includes('/') || this.configPath.includes('\\')
-      ? this.configPath.substring(0, Math.max(this.configPath.lastIndexOf('/'), this.configPath.lastIndexOf('\\')))
-      : this.workDir
-    ensureDir(targetDir)
-    writeFileSync(this.configPath, content, 'utf-8')
+    this.configStore.writeRaw(this.configPath, content)
   }
 
   /** Start FRP process */
   async start(): Promise<void> {
-    await this.ensureVersion()
+    const binaryPath = await this.ensureVersion()
 
     // Kill existing process if it's still running
     if (this.isRunning()) {
@@ -236,380 +227,127 @@ export class FrpProcessManager extends EventEmitter {
       await this.downloadFrpBinary()
     }
 
-    if (!existsSync(this.configPath)) {
-      throw new FrpBridgeError('Config file does not exist', ErrorCode.CONFIG_NOT_FOUND)
+    if (!this.configStore.exists(this.configPath)) {
+      throw new ConfigNotFoundError('Config file does not exist')
     }
 
-    this.process = spawn(this.binaryPath, ['-c', this.configPath], {
-      stdio: 'inherit'
-    })
+    // Use ProcessController to start the process
+    await this.processController.start(binaryPath, this.configPath)
 
-    this.uptime = Date.now()
-    this.isManualStop = false
-    this.setupProcessListeners()
-
-    this.emit('process:started', {
-      type: 'process:started',
-      timestamp: Date.now(),
-      payload: {
-        pid: this.process?.pid,
-        uptime: 0
-      }
-    } satisfies ProcessEvent)
+    // Update process state for queryProcess()
+    const status = this.processController.getStatus()
+    if (status) {
+      this.uptime = status.startTime
+      this.process = {
+        pid: status.pid,
+        exitCode: status.exitCode,
+        signalCode: status.signal,
+        kill: () => {
+          // No-op - process is managed by ProcessController
+        }
+      } as ChildProcess
+    }
   }
 
   /** Stop FRP process */
   async stop(): Promise<void> {
-    if (!this.process) {
+    if (!this.processController.isRunning()) {
       return
     }
 
     this.isManualStop = true
-    const proc = this.process
 
-    return new Promise<void>((resolve) => {
-      // Only attach listener once
-      const exitHandler = () => {
-        const uptime = this.uptime ? Date.now() - this.uptime : undefined
+    await this.processController.stop()
 
-        this.emit('process:stopped', {
-          type: 'process:stopped',
-          timestamp: Date.now(),
-          payload: { uptime }
-        } satisfies ProcessEvent)
-
-        this.uptime = null
-        resolve()
-      }
-
-      // Only attach listener if process is still alive
-      if (proc.exitCode === null) {
-        proc.once('exit', exitHandler)
-        proc.kill('SIGTERM')
-
-        // Force kill after 5 seconds if still running
-        setTimeout(() => {
-          if (proc.exitCode === null) {
-            this.logger.warn('Process did not exit gracefully, forcing kill')
-            proc.kill('SIGKILL')
-          }
-        }, 5000)
-      }
-      else {
-        // Process already dead
-        exitHandler()
-      }
-    }).finally(() => {
-      // Always clear reference after stop completes
-      this.process = null
-    })
+    // Clear process state
+    this.uptime = null
+    this.process = null
   }
 
   /** Check if process is running */
   isRunning(): boolean {
-    if (!this.process) {
-      return false
-    }
-
-    // Check if process still exists and hasn't been killed
-    // exitCode is null means process is still running
-    // signalCode is null means it didn't receive a termination signal
-    const running = this.process.exitCode === null && this.process.signalCode === null
-
-    // Clean up stale process reference if process is actually dead
-    if (!running) {
-      this.process = null
-    }
-
-    return running
+    return this.processController.isRunning()
   }
 
   /** Add node (for client mode) */
-  addNode(node: NodeInfo): void {
-    if (this.mode !== 'client') {
-      throw new FrpBridgeError('Nodes can only be added in client mode', ErrorCode.MODE_ERROR)
+  async addNode(node: NodeInfo): Promise<void> {
+    if (!this.nodeManager) {
+      throw new ModeError('Nodes can only be added in client mode')
     }
 
-    const config = this.getConfig() as ClientConfig || {}
-
-    config.serverAddr = node.serverAddr
-    config.serverPort = node.serverPort || 7000
-
-    if (node.token) {
-      config.auth = { ...config.auth, token: node.token }
-    }
-
-    if (node.config) {
-      Object.assign(config, node.config)
-    }
-
-    this.updateConfig(config)
+    await this.nodeManager.setNode(node as NewNodeInfo)
   }
 
   /** Get node info */
-  getNode(): NodeInfo | null {
-    if (this.mode !== 'client') {
-      throw new FrpBridgeError('Nodes are only available in client mode', ErrorCode.MODE_ERROR)
+  async getNode(): Promise<NodeInfo | null> {
+    if (!this.nodeManager) {
+      throw new ModeError('Nodes are only available in client mode')
     }
 
-    const config = this.getConfig() as ClientConfig
-    if (!config || !config.serverAddr) {
-      return null
-    }
-
-    return {
-      id: 'default',
-      name: 'default',
-      serverAddr: config.serverAddr,
-      serverPort: config.serverPort,
-      token: config.auth?.token
-    }
+    return this.nodeManager.getNode() as Promise<NodeInfo | null>
   }
 
   /** Update node info */
-  updateNode(node: Partial<NodeInfo>): void {
-    if (this.mode !== 'client') {
-      throw new FrpBridgeError('Nodes can only be updated in client mode', ErrorCode.MODE_ERROR)
+  async updateNode(node: Partial<NodeInfo>): Promise<void> {
+    if (!this.nodeManager) {
+      throw new ModeError('Nodes can only be updated in client mode')
     }
 
-    const config = this.getConfig() as ClientConfig || {}
-
-    if (node.serverAddr) {
-      config.serverAddr = node.serverAddr
-    }
-
-    if (node.serverPort) {
-      config.serverPort = node.serverPort
-    }
-
-    if (node.token) {
-      config.auth = { ...config.auth, token: node.token }
-    }
-
-    if (node.config) {
-      Object.assign(config, node.config)
-    }
-
-    this.updateConfig(config)
+    await this.nodeManager.updateNode(node as Partial<NewNodeInfo>)
   }
 
   /** Remove node */
-  removeNode(): void {
-    if (this.mode !== 'client') {
-      throw new FrpBridgeError('Nodes can only be removed in client mode', ErrorCode.MODE_ERROR)
+  async removeNode(): Promise<void> {
+    if (!this.nodeManager) {
+      throw new ModeError('Nodes can only be removed in client mode')
     }
 
-    if (existsSync(this.configPath)) {
-      unlinkSync(this.configPath)
-    }
+    await this.nodeManager.clearNode()
   }
 
   /** Add tunnel (proxy) */
-  addTunnel(proxy: ProxyConfig): void {
-    if (this.mode !== 'client') {
-      throw new Error('Tunnels can only be added in client mode')
+  async addTunnel(proxy: ProxyConfig): Promise<void> {
+    if (!this.tunnelManager) {
+      throw new ModeError('Tunnels can only be added in client mode')
     }
 
-    const content = existsSync(this.configPath) ? readFileSync(this.configPath, 'utf-8') : ''
-    const parsed = content ? parseToml(content) : {}
-
-    // Ensure proxies array exists
-    if (!Array.isArray(parsed.proxies)) {
-      parsed.proxies = []
-    }
-
-    // Check if tunnel with same name already exists
-    const existingIndex = parsed.proxies.findIndex((p: any) => p && p.name === proxy.name)
-    if (existingIndex !== -1) {
-      throw new FrpBridgeError(`Tunnel ${proxy.name} already exists`, ErrorCode.CONFIG_INVALID)
-    }
-
-    // Check if remotePort is already used (only for types that use remotePort)
-    const proxyRemotePort = (proxy as any).remotePort
-    if (proxyRemotePort && this.typeUsesRemotePort(proxy.type)) {
-      const remotePortInUse = parsed.proxies.some((p: any) => {
-        const pRemotePort = (p as any).remotePort
-        return p && pRemotePort === proxyRemotePort && this.typeUsesRemotePort(p.type)
-      })
-      if (remotePortInUse) {
-        throw new FrpBridgeError(`Remote port ${proxyRemotePort} is already in use`, ErrorCode.CONFIG_INVALID)
-      }
-    }
-
-    // Add new tunnel to proxies array
-    parsed.proxies.push(proxy)
-
-    const newContent = toToml(parsed)
-    writeFileSync(this.configPath, newContent, 'utf-8')
-  }
-
-  /** Check if proxy type uses remotePort */
-  private typeUsesRemotePort(type: string): boolean {
-    return [
-      ProxyType.TCP,
-      ProxyType.UDP,
-      ProxyType.STCP,
-      ProxyType.XTCP,
-      ProxyType.SUDP,
-      ProxyType.TCPMUX
-    ].includes(type as ProxyType)
+    await this.tunnelManager.add(proxy)
   }
 
   /** Get tunnel by name */
-  getTunnel(name: string): ProxyConfig | null {
-    if (this.mode !== 'client') {
-      throw new Error('Tunnels are only available in client mode')
+  async getTunnel(name: string): Promise<ProxyConfig | null> {
+    if (!this.tunnelManager) {
+      throw new ModeError('Tunnels are only available in client mode')
     }
 
-    if (!existsSync(this.configPath)) {
-      return null
-    }
-
-    const content = readFileSync(this.configPath, 'utf-8')
-    const parsed = parseToml(content)
-
-    // Handle [[proxies]] array syntax (modern format)
-    if (Array.isArray(parsed.proxies)) {
-      return parsed.proxies.find((p: any) => p && p.name === name) as ProxyConfig || null
-    }
-
-    // Handle legacy format where tunnels are individual sections
-    return parsed[name] as ProxyConfig || null
+    return this.tunnelManager.get(name)
   }
 
   /** Update tunnel */
-  updateTunnel(name: string, proxy: Partial<ProxyConfig>): void {
-    if (this.mode !== 'client') {
-      throw new FrpBridgeError('Tunnels can only be updated in client mode', ErrorCode.MODE_ERROR)
+  async updateTunnel(name: string, proxy: Partial<ProxyConfig>): Promise<void> {
+    if (!this.tunnelManager) {
+      throw new ModeError('Tunnels can only be updated in client mode')
     }
 
-    if (!existsSync(this.configPath)) {
-      throw new FrpBridgeError('Config file does not exist', ErrorCode.CONFIG_NOT_FOUND)
-    }
-
-    const content = readFileSync(this.configPath, 'utf-8')
-    const parsed = parseToml(content)
-
-    // Handle [[proxies]] array syntax (modern format)
-    if (Array.isArray(parsed.proxies)) {
-      const tunnelIndex = parsed.proxies.findIndex((p: any) => p && p.name === name)
-      if (tunnelIndex === -1) {
-        throw new FrpBridgeError(`Tunnel ${name} not found`, ErrorCode.NOT_FOUND)
-      }
-
-      const existingTunnel = parsed.proxies[tunnelIndex]
-      const updatedTunnel = { ...existingTunnel, ...proxy }
-
-      // Check if remotePort is being changed and if the new port is already in use
-      const newRemotePort = (proxy as any).remotePort
-      if (newRemotePort && newRemotePort !== (existingTunnel as any).remotePort) {
-        if (this.typeUsesRemotePort(updatedTunnel.type)) {
-          const remotePortInUse = parsed.proxies.some((p: any, idx: number) => {
-            if (idx === tunnelIndex)
-              return false // Skip current tunnel
-            const pRemotePort = (p as any).remotePort
-            return p && pRemotePort === newRemotePort && this.typeUsesRemotePort(p.type)
-          })
-          if (remotePortInUse) {
-            throw new FrpBridgeError(`Remote port ${newRemotePort} is already in use`, ErrorCode.CONFIG_INVALID)
-          }
-        }
-      }
-
-      parsed.proxies[tunnelIndex] = updatedTunnel
-    }
-    // Handle legacy format where tunnels are individual sections
-    else if (parsed[name]) {
-      parsed[name] = { ...parsed[name], ...proxy }
-    }
-    else {
-      throw new FrpBridgeError(`Tunnel ${name} not found`, ErrorCode.NOT_FOUND)
-    }
-
-    const newContent = toToml(parsed)
-    writeFileSync(this.configPath, newContent, 'utf-8')
+    await this.tunnelManager.update(name, proxy)
   }
 
   /** Remove tunnel */
-  removeTunnel(name: string): void {
-    if (this.mode !== 'client') {
-      throw new FrpBridgeError('Tunnels can only be removed in client mode', ErrorCode.MODE_ERROR)
+  async removeTunnel(name: string): Promise<void> {
+    if (!this.tunnelManager) {
+      throw new ModeError('Tunnels can only be removed in client mode')
     }
 
-    if (!existsSync(this.configPath)) {
-      return
-    }
-
-    const content = readFileSync(this.configPath, 'utf-8')
-    const parsed = parseToml(content)
-
-    // Handle [[proxies]] array syntax (modern format)
-    if (Array.isArray(parsed.proxies)) {
-      const tunnelIndex = parsed.proxies.findIndex((p: any) => p && p.name === name)
-      if (tunnelIndex !== -1) {
-        parsed.proxies.splice(tunnelIndex, 1)
-      }
-    }
-    // Handle legacy format where tunnels are individual sections
-    else if (parsed[name]) {
-      delete parsed[name]
-    }
-
-    const newContent = toToml(parsed)
-    writeFileSync(this.configPath, newContent, 'utf-8')
+    await this.tunnelManager.remove(name)
   }
 
   /** List all tunnels */
-  listTunnels(): ProxyConfig[] {
-    if (this.mode !== 'client') {
-      throw new FrpBridgeError('Tunnels are only available in client mode', ErrorCode.MODE_ERROR)
+  async listTunnels(): Promise<ProxyConfig[]> {
+    if (!this.tunnelManager) {
+      throw new ModeError('Tunnels are only available in client mode')
     }
 
-    if (!existsSync(this.configPath)) {
-      this.logger.warn?.('Config file does not exist', { path: this.configPath })
-      return []
-    }
-
-    const content = readFileSync(this.configPath, 'utf-8')
-    const parsed = parseToml(content)
-
-    this.logger.info?.('listTunnels - parsed config:', {
-      hasProxies: 'proxies' in parsed,
-      isArray: Array.isArray(parsed.proxies),
-      length: parsed.proxies?.length,
-      proxies: parsed.proxies
-    })
-
-    const tunnels: ProxyConfig[] = []
-
-    // Handle [[proxies]] array syntax (modern format)
-    if (Array.isArray(parsed.proxies)) {
-      for (const proxy of parsed.proxies) {
-        if (proxy && typeof proxy === 'object' && 'type' in proxy) {
-          tunnels.push(proxy as ProxyConfig)
-        }
-      }
-    }
-
-    // Also handle legacy format where tunnels are defined as individual sections
-    // e.g., [ssh], [web] instead of [[proxies]]
-    const proxyKeys = new Set(tunnels.map(t => (t as any).name))
-    for (const [key, value] of Object.entries(parsed)) {
-      if (key === 'proxies')
-        continue // Skip the proxies array we already processed
-      if (typeof value === 'object' && value !== null && 'type' in value && !Array.isArray(value)) {
-        // For legacy format, the section name is the proxy name
-        const proxy = { ...value, name: (value as any).name || key } as ProxyConfig
-        if (!proxyKeys.has(proxy.name)) {
-          tunnels.push(proxy)
-          proxyKeys.add(proxy.name)
-        }
-      }
-    }
-
-    this.logger.info?.('listTunnels - result:', { tunnelCount: tunnels.length, tunnels })
-
-    return tunnels
+    return this.tunnelManager.list()
   }
 
   /**
@@ -617,48 +355,14 @@ export class FrpProcessManager extends EventEmitter {
    */
   queryProcess() {
     const uptime = this.uptime ? Date.now() - this.uptime : 0
+    const status = this.processController.getStatus()
 
     return {
-      pid: this.process?.pid,
+      pid: status?.pid ?? this.process?.pid,
       uptime
     }
   }
-
-  private setupProcessListeners(): void {
-    if (!this.process) {
-      return
-    }
-
-    this.process.on('exit', (code, signal) => {
-      const uptime = this.uptime ? Date.now() - this.uptime : undefined
-
-      if (!this.isManualStop) {
-        this.emit('process:exited', {
-          type: 'process:exited',
-          timestamp: Date.now(),
-          payload: {
-            code: code ?? undefined,
-            signal: signal ?? undefined,
-            uptime
-          }
-        } satisfies ProcessEvent)
-      }
-
-      this.process = null
-      this.uptime = null
-    })
-
-    this.process.on('error', (error) => {
-      this.emit('process:error', {
-        type: 'process:error',
-        timestamp: Date.now(),
-        payload: {
-          error: error.message,
-          pid: this.process?.pid
-        }
-      } satisfies ProcessEvent)
-
-      this.logger.error('FRP process error', { error })
-    })
-  }
 }
+
+// Re-export all controllers from './controllers'
+export * from './controllers'

@@ -147,7 +147,6 @@ export function findExistingVersion(workDir: string): string | null {
 
 /**
  * Parse TOML-like config to JSON
- * @deprecated Use `import { parse } from '@frp-bridge/core/toml'` instead
  */
 export function parseToml(content: string): Record<string, any> {
   const lines = content.split('\n')
@@ -230,7 +229,6 @@ export function parseToml(content: string): Record<string, any> {
 
 /**
  * Convert JSON to TOML-like config
- * @deprecated Use `import { stringify } from '@frp-bridge/core/toml'` instead
  */
 export function toToml(obj: Record<string, any>): string {
   const lines: string[] = []
