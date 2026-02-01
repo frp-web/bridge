@@ -9,6 +9,12 @@ import type { ConfigurationStore, FrpConfig } from './configuration-store'
 import { ProxyType } from '@frp-bridge/types'
 import { ConfigInvalidError, NotFoundError } from '../../errors'
 
+/**
+ * Extended config type that includes proxies array
+ * This represents the actual TOML structure with [[proxies]] syntax
+ */
+type ExtendedFrpConfig = FrpConfig & { proxies?: ProxyConfig[] }
+
 export interface ValidationResult {
   valid: boolean
   errors: string[]
@@ -43,28 +49,28 @@ export class TunnelManager {
   async add(proxy: ProxyConfig): Promise<void> {
     // 1. Load current config
     const config = await this.loadConfig()
-    const parsed = config || {}
+    const parsed = (config || {}) as Record<string, unknown>
 
     // 2. Ensure proxies array exists
     if (!Array.isArray(parsed.proxies)) {
-      (parsed as any).proxies = []
+      parsed.proxies = []
     }
 
     // 3. Validate uniqueness
-    this.validateUniqueness(parsed as any, proxy)
+    this.validateUniqueness(parsed, proxy)
 
     // 4. Add to array
-    ;(parsed as any).proxies.push(proxy)
+    ;(parsed.proxies as ProxyConfig[]).push(proxy)
 
     // 5. Save
-    await this.configStore.save(this.configPath, parsed)
+    await this.configStore.save(this.configPath, parsed as FrpConfig)
   }
 
   /**
    * Get a tunnel by name
    */
   async get(name: string): Promise<ProxyConfig | null> {
-    const config = await this.loadConfig()
+    const config = await this.loadConfig() as ExtendedFrpConfig | null
     if (!config) {
       return null
     }
@@ -82,7 +88,7 @@ export class TunnelManager {
    * Update a tunnel
    */
   async update(name: string, proxy: Partial<ProxyConfig>): Promise<void> {
-    const config = await this.loadConfig()
+    const config = await this.loadConfig() as ExtendedFrpConfig | null
     if (!config) {
       throw new NotFoundError(`Tunnel ${name} not found`)
     }
@@ -113,14 +119,14 @@ export class TunnelManager {
       throw new NotFoundError(`Tunnel ${name} not found`)
     }
 
-    await this.configStore.save(this.configPath, config)
+    await this.configStore.save(this.configPath, config as FrpConfig)
   }
 
   /**
    * Remove a tunnel
    */
   async remove(name: string): Promise<void> {
-    const config = await this.loadConfig()
+    const config = await this.loadConfig() as ExtendedFrpConfig | null
     if (!config) {
       return
     }
@@ -142,7 +148,7 @@ export class TunnelManager {
     }
 
     if (modified) {
-      await this.configStore.save(this.configPath, config)
+      await this.configStore.save(this.configPath, config as FrpConfig)
     }
   }
 
@@ -150,7 +156,7 @@ export class TunnelManager {
    * List all tunnels
    */
   async list(): Promise<ProxyConfig[]> {
-    const config = await this.loadConfig()
+    const config = await this.loadConfig() as ExtendedFrpConfig | null
     if (!config) {
       return []
     }

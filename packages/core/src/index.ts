@@ -1,5 +1,6 @@
 export { FrpBridge } from './bridge'
 export type { FrpBridgeOptions } from './bridge'
+export * from './config-merger'
 export * from './constants'
 export * from './errors'
 export { ClientNodeCollector, FileNodeStorage, NodeManager } from './node'

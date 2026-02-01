@@ -48,6 +48,7 @@ export interface ProcessControllerEvent {
     error?: string
     pid?: number
     uptime?: number
+    unexpected?: boolean
   }
 }
 
@@ -63,6 +64,8 @@ export class ProcessController extends EventEmitter {
   private readonly logger: RuntimeLogger
   private process: ChildProcess | null = null
   private processStartTime: number | null = null
+  private currentBinaryPath: string = ''
+  private currentConfigPath: string = ''
   private isManualStop = false
   private gracefulTimeout = 5000 // 5 seconds for graceful shutdown
 
@@ -86,7 +89,11 @@ export class ProcessController extends EventEmitter {
       await this.stop()
     }
 
-    // 3. Spawn the process
+    // 3. Store paths
+    this.currentBinaryPath = binaryPath
+    this.currentConfigPath = configPath
+
+    // 4. Spawn the process
     this.process = spawn(binaryPath, ['-c', configPath], {
       stdio: 'inherit'
     })
@@ -203,9 +210,9 @@ export class ProcessController extends EventEmitter {
     }
 
     return {
-      pid: this.process.pid,
+      pid: this.process.pid ?? 0,
       running: this.isRunning(),
-      uptime: this.processStartTime ? Date.now() - this.processStartTime : 0,
+      uptime: Date.now() - this.processStartTime,
       startTime: this.processStartTime,
       exitCode: this.process.exitCode,
       signal: this.process.signalCode
@@ -280,17 +287,17 @@ export class ProcessController extends EventEmitter {
 
   private createProcessHandle(): ProcessHandle {
     if (!this.process) {
-      throw new GenericError('Process not initialized')
+      throw new GenericError('Process not initialized', 'PROCESS_NOT_INITIALIZED')
     }
 
     return {
-      pid: this.process.pid,
+      pid: this.process.pid ?? 0,
       startTime: Date.now(),
       running: true,
       exitCode: null,
       signal: null,
-      configPath: '',
-      binaryPath: ''
+      configPath: this.currentConfigPath,
+      binaryPath: this.currentBinaryPath
     }
   }
 }

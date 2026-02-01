@@ -400,6 +400,62 @@ export function createProxyRemoveCommand(deps: CommandDependencies): CommandHand
   )
 }
 
+// ============================================================================
+// Preset Config Commands
+// ============================================================================
+
+/**
+ * Preset config get handler
+ */
+export function createPresetConfigGetCommand(deps: CommandDependencies): CommandHandler {
+  return withErrorHandling(async () => {
+    const presetConfig = deps.process.getPresetConfig()
+    return {
+      status: 'success',
+      result: presetConfig
+    }
+  }, deps)
+}
+
+/**
+ * Preset config set handler
+ */
+export function createPresetConfigSetCommand(deps: CommandDependencies): CommandHandler<Record<string, any>> {
+  return withErrorHandling(async (command) => {
+    const config = command.payload?.config
+    if (!config || typeof config !== 'object') {
+      throw new Error('preset.set requires payload.config')
+    }
+
+    deps.process.savePresetConfig(config)
+
+    // Regenerate config file
+    await deps.process.generateConfig(true)
+
+    return {
+      status: 'success',
+      result: config
+    }
+  }, deps)
+}
+
+/**
+ * Config generate handler
+ */
+export function createConfigGenerateCommand(deps: CommandDependencies): CommandHandler<{ force?: boolean }> {
+  return withErrorHandling(async (command) => {
+    const force = command.payload?.force ?? false
+    await deps.process.generateConfig(force)
+
+    return {
+      status: 'success',
+      result: {
+        configPath: deps.process.getConfigPath()
+      }
+    }
+  }, deps)
+}
+
 /**
  * Factory to create all command handlers
  */
@@ -407,6 +463,9 @@ export function createCommandHandlers(deps: CommandDependencies): Record<string,
   return {
     'config.apply': createConfigApplyCommand(deps) as CommandHandler,
     'config.applyRaw': createConfigApplyRawCommand(deps) as CommandHandler,
+    'config.generate': createConfigGenerateCommand(deps) as CommandHandler,
+    'preset.get': createPresetConfigGetCommand(deps) as CommandHandler,
+    'preset.set': createPresetConfigSetCommand(deps) as CommandHandler,
     'process.stop': createProcessStopCommand(deps) as CommandHandler,
     'node.register': createNodeRegisterCommand(deps) as CommandHandler,
     'node.heartbeat': createNodeHeartbeatCommand(deps) as CommandHandler,

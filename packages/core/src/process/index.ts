@@ -11,15 +11,15 @@
 
 import type { ClientConfig, ProxyConfig, ServerConfig } from '@frp-bridge/types'
 import type { ChildProcess } from 'node:child_process'
+import type { PresetConfig } from '../config-merger'
 import type { RuntimeLogger } from '../runtime'
 import type { NodeInfo as NewNodeInfo, ProcessControllerEvent } from './controllers'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
 import { consola } from 'consola'
 import { join } from 'pathe'
+import { saveFrpConfigFile } from '../config-merger'
 import { ConfigNotFoundError, ModeError } from '../errors'
-
-// Import refactored components
 import {
   BinaryManager,
   ConfigurationStore,
@@ -27,6 +27,7 @@ import {
   ProcessController,
   TunnelManager
 } from './controllers'
+import { PresetConfigManager } from './controllers/preset-config-manager'
 
 export interface ProcessEvent {
   type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
@@ -89,6 +90,7 @@ export class FrpProcessManager extends EventEmitter {
   private readonly processController: ProcessController
   private readonly configStore: ConfigurationStore
   private readonly binaryManager: BinaryManager
+  private readonly presetConfigManager: PresetConfigManager
   private tunnelManager: TunnelManager | null = null
   private nodeManager: NodeManager | null = null
 
@@ -111,6 +113,10 @@ export class FrpProcessManager extends EventEmitter {
     this.binaryManager = new BinaryManager({
       workDir: this.workDir,
       mode: this.mode,
+      logger: this.logger
+    })
+    this.presetConfigManager = new PresetConfigManager({
+      workDir: this.workDir,
       logger: this.logger
     })
 
@@ -348,6 +354,49 @@ export class FrpProcessManager extends EventEmitter {
     }
 
     return this.tunnelManager.list()
+  }
+
+  /**
+   * 生成 FRP 配置文件（合并预设配置和用户 tunnels）
+   * @param force 是否强制重新生成
+   */
+  async generateConfig(force = false): Promise<void> {
+    const type = this.mode === 'server' ? 'frps' : 'frpc'
+
+    // 如果配置文件已存在且不强制重新生成，则跳过
+    if (!force && this.configStore.exists(this.configPath)) {
+      return
+    }
+
+    // 1. 加载预设配置
+    const presetConfig = this.presetConfigManager.load(type)
+
+    // 2. 获取 tunnels（client 模式从 TunnelManager 获取，server 模式为空）
+    let tunnels: ProxyConfig[] = []
+    if (this.mode === 'client' && this.tunnelManager) {
+      tunnels = await this.tunnelManager.list()
+    }
+
+    // 3. 使用 saveFrpConfigFile 生成配置文件
+    saveFrpConfigFile(this.configPath, tunnels, presetConfig, type)
+
+    this.logger.info(`Generated FRP config: ${this.configPath}`)
+  }
+
+  /**
+   * 获取预设配置
+   */
+  getPresetConfig(): PresetConfig {
+    const type = this.mode === 'server' ? 'frps' : 'frpc'
+    return this.presetConfigManager.load(type)
+  }
+
+  /**
+   * 保存预设配置
+   */
+  savePresetConfig(config: Record<string, any>): void {
+    const type = this.mode === 'server' ? 'frps' : 'frpc'
+    this.presetConfigManager.save(type, config)
   }
 
   /**
