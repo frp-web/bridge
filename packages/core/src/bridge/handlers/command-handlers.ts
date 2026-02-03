@@ -2,6 +2,7 @@ import type { NodeHeartbeatPayload, NodeRegisterPayload } from '@frp-bridge/type
 import type { NodeManager } from '../../node'
 import type { FrpProcessManager } from '../../process'
 import type { RpcServer } from '../../rpc'
+import type { NodeDeletePayload, TunnelAddPayload, TunnelDeletePayload } from '../../rpc/message-types'
 import type { CommandHandler, CommandHandlerContext, CommandResult, RuntimeEvent } from '../../runtime'
 import type { ConfigApplyPayload, ConfigApplyRawPayload, ProxyAddPayload, ProxyRemovePayload, ProxyUpdatePayload } from '../types'
 import type { Validator } from './decorators'
@@ -470,8 +471,153 @@ export function createCommandHandlers(deps: CommandDependencies): Record<string,
     'node.register': createNodeRegisterCommand(deps) as CommandHandler,
     'node.heartbeat': createNodeHeartbeatCommand(deps) as CommandHandler,
     'node.unregister': createNodeUnregisterCommand(deps) as CommandHandler,
+    'node.delete': createNodeDeleteCommand(deps) as CommandHandler,
     'proxy.add': createProxyAddCommand(deps) as CommandHandler,
     'proxy.update': createProxyUpdateCommand(deps) as CommandHandler,
-    'proxy.remove': createProxyRemoveCommand(deps) as CommandHandler
+    'proxy.remove': createProxyRemoveCommand(deps) as CommandHandler,
+    // Tunnel commands (aliases for proxy commands, matching document spec)
+    'tunnel.add': createTunnelAddCommand(deps) as CommandHandler,
+    'tunnel.delete': createTunnelDeleteCommand(deps) as CommandHandler
   }
+}
+
+// ============================================================================
+// Tunnel Commands (matching document spec)
+// ============================================================================
+
+/**
+ * Validate tunnel add payload
+ */
+const validateTunnelAdd: Validator<TunnelAddPayload> = (payload) => {
+  if (!payload) {
+    return { valid: false, error: 'tunnel.add requires payload' }
+  }
+  if (!payload.name || typeof payload.name !== 'string') {
+    return { valid: false, error: 'tunnel.add requires payload.name' }
+  }
+  if (!payload.type || typeof payload.type !== 'string') {
+    return { valid: false, error: 'tunnel.add requires payload.type' }
+  }
+  if (typeof payload.localPort !== 'number') {
+    return { valid: false, error: 'tunnel.add requires payload.localPort to be a number' }
+  }
+  return { valid: true }
+}
+
+/**
+ * Validate tunnel delete payload
+ */
+const validateTunnelDelete: Validator<TunnelDeletePayload> = (payload) => {
+  if (!payload?.name) {
+    return { valid: false, error: 'tunnel.delete requires payload.name' }
+  }
+  return { valid: true }
+}
+
+/**
+ * Validate node delete payload
+ */
+const validateNodeDelete: Validator<NodeDeletePayload> = (payload) => {
+  if (!payload?.name) {
+    return { valid: false, error: 'node.delete requires payload.name' }
+  }
+  return { valid: true }
+}
+
+/**
+ * Local tunnel add handler (client mode)
+ * Compatible with document spec: { name, type, localPort, remotePort?, ... }
+ */
+async function tunnelAddLocal(payload: TunnelAddPayload, deps: CommandDependencies): Promise<CommandResult> {
+  // Convert TunnelAddPayload to ProxyConfig format
+  const proxyConfig = {
+    name: payload.name,
+    type: payload.type,
+    localIP: '127.0.0.1',
+    localPort: payload.localPort,
+    ...(payload.remotePort && { remotePort: payload.remotePort }),
+    ...(payload.customDomains && { customDomains: payload.customDomains }),
+    ...(payload.subdomain && { subdomain: payload.subdomain })
+  }
+
+  deps.process.addTunnel(proxyConfig)
+  return {
+    status: 'success',
+    result: { ...proxyConfig, success: true }
+  }
+}
+
+/**
+ * Create tunnel add command handler (matching document spec)
+ * This is an alias for proxy.add with different payload format
+ */
+export function createTunnelAddCommand(deps: CommandDependencies): CommandHandler<TunnelAddPayload> {
+  return compose<TunnelAddPayload>(
+    withErrorHandling,
+    withValidation(validateTunnelAdd),
+    withPortConflictCheck
+  )(
+    withModeRouting(
+      tunnelAddLocal,
+      'tunnel.add',
+      payload => ({ proxy: payload as any })
+    )(async () => ({ status: 'success' }), deps),
+    deps
+  )
+}
+
+/**
+ * Local tunnel delete handler (client mode)
+ */
+async function tunnelDeleteLocal(payload: TunnelDeletePayload, deps: CommandDependencies): Promise<CommandResult> {
+  deps.process.removeTunnel(payload.name)
+  return {
+    status: 'success',
+    result: { name: payload.name, success: true }
+  }
+}
+
+/**
+ * Create tunnel delete command handler (matching document spec)
+ * This is an alias for proxy.remove
+ */
+export function createTunnelDeleteCommand(deps: CommandDependencies): CommandHandler<TunnelDeletePayload> {
+  return compose<TunnelDeletePayload>(
+    withErrorHandling,
+    withValidation(validateTunnelDelete)
+  )(
+    withModeRouting(
+      tunnelDeleteLocal,
+      'tunnel.delete',
+      payload => ({ name: payload.name })
+    )(async () => ({ status: 'success' }), deps),
+    deps
+  )
+}
+
+/**
+ * Node delete handler (server mode only)
+ * Removes a node from the node manager
+ */
+function nodeDeleteCore(deps: CommandDependencies): CommandHandler<NodeDeletePayload> {
+  return async (command) => {
+    const nodeName = command.payload!.name
+    deps.nodeManager!.unregisterNode(nodeName)
+    return {
+      status: 'success',
+      result: { deletedNode: nodeName, success: true }
+    }
+  }
+}
+
+/**
+ * Create node delete command handler (matching document spec)
+ */
+export function createNodeDeleteCommand(deps: CommandDependencies): CommandHandler<NodeDeletePayload> {
+  return compose<NodeDeletePayload>(
+    withErrorHandling,
+    withNodeManager,
+    withServerModeOnly,
+    withValidation(validateNodeDelete)
+  )(nodeDeleteCore(deps), deps)
 }

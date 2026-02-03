@@ -69,6 +69,87 @@ export interface PongMessage {
  */
 export type RpcMessage = RegisterMessage | RpcRequest | RpcResponse | PingMessage | PongMessage
 
+// ============================================================================
+// Event-based Message Types (compatible with architecture document)
+// ============================================================================
+
+/**
+ * Event-based RPC message type (matching document spec)
+ */
+export interface EventRpcMessage {
+  type: 'command' | 'event'
+  action: string
+  payload: unknown
+  id?: string
+  targetNodeId?: string
+}
+
+/**
+ * Command message (frps -> frpc)
+ */
+export interface CommandRpcMessage extends EventRpcMessage {
+  type: 'command'
+  id: string
+}
+
+/**
+ * Event message (frpc -> frps)
+ */
+export interface EventRpcMessageEvent extends EventRpcMessage {
+  type: 'event'
+  id?: string
+}
+
+/**
+ * Tunnel add payload
+ */
+export interface TunnelAddPayload {
+  name: string
+  type: 'tcp' | 'http' | 'https' | 'stcp' | 'sudp' | 'xtcp'
+  localPort: number
+  remotePort?: number
+  customDomains?: string[]
+  subdomain?: string
+  [key: string]: unknown
+}
+
+/**
+ * Tunnel delete payload
+ */
+export interface TunnelDeletePayload {
+  name: string
+}
+
+/**
+ * Tunnel response payload
+ */
+export interface TunnelResponsePayload {
+  success: boolean
+  error?: string
+  tunnel?: TunnelAddPayload
+}
+
+/**
+ * Node delete payload
+ */
+export interface NodeDeletePayload {
+  name: string
+}
+
+/**
+ * Node response payload
+ */
+export interface NodeResponsePayload {
+  success: boolean
+  error?: string
+  deletedNode?: string
+}
+
+/**
+ * All message types including event-based
+ */
+export type AllRpcMessage = RpcMessage | EventRpcMessage
+
 /**
  * 类型守卫：检查是否为注册消息
  */
@@ -108,4 +189,65 @@ export function isPingMessage(msg: unknown): msg is PingMessage {
 export function isPongMessage(msg: unknown): msg is PongMessage {
   return typeof msg === 'object' && msg !== null
     && (msg as any).type === RpcMessageType.PONG
+}
+
+// ============================================================================
+// Event-based Message Type Guards
+// ============================================================================
+
+/**
+ * 类型守卫：检查是否为 Event-based RPC 消息
+ */
+export function isEventRpcMessage(msg: unknown): msg is EventRpcMessage {
+  return typeof msg === 'object' && msg !== null
+    && ((msg as any).type === 'command' || (msg as any).type === 'event')
+    && typeof (msg as any).action === 'string'
+    && 'payload' in (msg as any)
+}
+
+/**
+ * 类型守卫：检查是否为 Command 消息
+ */
+export function isCommandMessage(msg: unknown): msg is CommandRpcMessage {
+  return isEventRpcMessage(msg)
+    && (msg as any).type === 'command'
+    && typeof (msg as any).id === 'string'
+}
+
+/**
+ * 类型守卫：检查是否为 Event 消息
+ */
+export function isEventMessage(msg: unknown): msg is EventRpcMessageEvent {
+  return isEventRpcMessage(msg)
+    && (msg as any).type === 'event'
+}
+
+/**
+ * 类型守卫：检查是否为 TunnelAddPayload
+ */
+export function isTunnelAddPayload(data: unknown): data is TunnelAddPayload {
+  if (typeof data !== 'object' || data === null)
+    return false
+
+  const payload = data as TunnelAddPayload
+  return typeof payload.name === 'string'
+    && typeof payload.type === 'string'
+    && typeof payload.localPort === 'number'
+    && (payload.remotePort === undefined || typeof payload.remotePort === 'number')
+}
+
+/**
+ * 类型守卫：检查是否为 TunnelDeletePayload
+ */
+export function isTunnelDeletePayload(data: unknown): data is TunnelDeletePayload {
+  return typeof data === 'object' && data !== null
+    && typeof (data as any).name === 'string'
+}
+
+/**
+ * 类型守卫：检查是否为 NodeDeletePayload
+ */
+export function isNodeDeletePayload(data: unknown): data is NodeDeletePayload {
+  return typeof data === 'object' && data !== null
+    && typeof (data as any).name === 'string'
 }

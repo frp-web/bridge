@@ -1,15 +1,28 @@
 import type { NodeInfo, RpcRequest, RpcResponse } from '@frp-bridge/types'
 import type { IncomingMessage } from 'node:http'
-import type { RegisterMessage } from './message-types'
+import type { EventRpcMessage, RegisterMessage } from './message-types'
 import { randomUUID } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
-import { isPongMessage, isRegisterMessage, isRpcResponse } from './message-types'
+import { isEventMessage, isPongMessage, isRegisterMessage, isRpcResponse } from './message-types'
 import { safeParse } from './utils'
 
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (reason?: unknown) => void
   timer: NodeJS.Timeout
+}
+
+/**
+ * Command status for tracking
+ */
+export interface RpcCommandStatus {
+  commandId: string
+  nodeId: string
+  action: string
+  status: 'pending' | 'completed' | 'failed'
+  result?: unknown
+  error?: string
+  timestamp: number
 }
 
 export interface RpcServerOptions {
@@ -23,16 +36,22 @@ export interface RpcServerOptions {
   validateToken?: (token: string | undefined, nodeId: string | undefined) => boolean | Promise<boolean>
   authorize?: (nodeId: string, method: string) => boolean | Promise<boolean>
   onRegister?: (nodeId: string, payload: NodeInfo) => void | Promise<void>
+  onEvent?: (nodeId: string, event: EventRpcMessage) => void | Promise<void>
+  commandTimeout?: number // Default timeout for command tracking
 }
 
 export class RpcServer {
   private readonly clients = new Map<string, WebSocket>()
   private readonly pendingRequests = new Map<string, PendingRequest>()
+  private readonly commandStatuses = new Map<string, RpcCommandStatus>()
   private readonly wsToNode = new Map<WebSocket, string>()
   private heartbeatTimer?: NodeJS.Timeout
   private server?: WebSocketServer
+  private readonly defaultCommandTimeout: number
 
-  constructor(private readonly options: RpcServerOptions) {}
+  constructor(private readonly options: RpcServerOptions) {
+    this.defaultCommandTimeout = options.commandTimeout ?? 60000
+  }
 
   start(): void {
     if (this.server) {
@@ -99,6 +118,135 @@ export class RpcServer {
     })
   }
 
+  /**
+   * Send event-based message to a specific node (matching document spec)
+   */
+  sendToNode(nodeId: string, message: EventRpcMessage): boolean {
+    const ws = this.clients.get(nodeId)
+    if (!ws) {
+      this.options.logger?.error?.(`[RPC] Node not found: ${nodeId}`)
+      return false
+    }
+
+    if (ws.readyState !== WebSocket.OPEN) {
+      this.options.logger?.error?.(`[RPC] Node not ready: ${nodeId}`)
+      return false
+    }
+
+    try {
+      ws.send(JSON.stringify(message))
+
+      // Track command status if it's a command with ID
+      if (message.type === 'command' && message.id) {
+        this.commandStatuses.set(message.id, {
+          commandId: message.id,
+          nodeId,
+          action: message.action,
+          status: 'pending',
+          timestamp: Date.now()
+        })
+
+        // Set timeout to mark as failed if no response
+        setTimeout(() => {
+          const status = this.commandStatuses.get(message.id!)
+          if (status && status.status === 'pending') {
+            status.status = 'failed'
+            status.error = 'Command timeout'
+            this.options.logger?.warn?.(`[RPC] Command ${message.id} (${message.action}) timeout`)
+          }
+        }, this.defaultCommandTimeout)
+      }
+
+      return true
+    }
+    catch (error) {
+      this.options.logger?.error?.(`[RPC] Send failed to ${nodeId}:`, error)
+      return false
+    }
+  }
+
+  /**
+   * Broadcast event-based message to all connected nodes
+   */
+  broadcast(message: EventRpcMessage): void {
+    const data = JSON.stringify(message)
+    let successCount = 0
+    let failCount = 0
+
+    for (const [nodeId, ws] of this.clients.entries()) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(data)
+          successCount++
+        }
+        catch (error) {
+          this.options.logger?.error?.(`[RPC] Broadcast failed to ${nodeId}:`, error)
+          failCount++
+        }
+      }
+    }
+
+    this.options.logger?.info?.(`[RPC] Broadcast completed`, {
+      total: this.clients.size,
+      success: successCount,
+      failed: failCount
+    })
+  }
+
+  /**
+   * Get list of all online node IDs
+   */
+  getOnlineNodes(): string[] {
+    return Array.from(this.clients.keys())
+  }
+
+  /**
+   * Check if a specific node is online
+   */
+  isNodeOnline(nodeId: string): boolean {
+    const ws = this.clients.get(nodeId)
+    return ws !== undefined && ws.readyState === WebSocket.OPEN
+  }
+
+  /**
+   * Get the count of online nodes
+   */
+  getOnlineNodeCount(): number {
+    let count = 0
+    for (const ws of this.clients.values()) {
+      if (ws.readyState === WebSocket.OPEN) {
+        count++
+      }
+    }
+    return count
+  }
+
+  /**
+   * Get command status by ID
+   */
+  getRpcCommandStatus(commandId: string): RpcCommandStatus | undefined {
+    return this.commandStatuses.get(commandId)
+  }
+
+  /**
+   * Get all command statuses
+   */
+  getAllRpcCommandStatuses(): RpcCommandStatus[] {
+    return Array.from(this.commandStatuses.values())
+  }
+
+  /**
+   * Clear completed/failed command statuses older than specified milliseconds
+   */
+  clearOldStatuses(maxAge = 300000): void { // Default 5 minutes
+    const now = Date.now()
+    for (const [id, status] of this.commandStatuses.entries()) {
+      if (status.status !== 'pending' && (now - status.timestamp) > maxAge) {
+        this.commandStatuses.delete(id)
+      }
+    }
+  }
+
   private async handleMessage(ws: WebSocket, data: WebSocket.RawData, token?: string): Promise<void> {
     const msg = safeParse(data, this.options.logger)
     if (!msg) {
@@ -114,8 +262,46 @@ export class RpcServer {
       return
     }
 
+    // Handle Event-based messages (from client)
+    if (isEventMessage(msg)) {
+      await this.handleEventMessage(ws, msg)
+      return
+    }
+
     if (isRpcResponse(msg)) {
       this.handleRpcResponse(msg)
+    }
+  }
+
+  /**
+   * Handle event-based messages from clients
+   */
+  private async handleEventMessage(ws: WebSocket, msg: EventRpcMessage): Promise<void> {
+    const nodeId = this.wsToNode.get(ws)
+    if (!nodeId) {
+      this.options.logger?.warn?.('[RPC] Received event from unregistered client')
+      return
+    }
+
+    this.options.logger?.info?.(`[RPC] Event from ${nodeId}`, {
+      action: msg.action,
+      payload: msg.payload
+    })
+
+    // Update command status if this event references a command
+    if (msg.id) {
+      const status = this.commandStatuses.get(msg.id)
+      if (status) {
+        const payload = msg.payload as { success?: boolean, error?: string, result?: unknown }
+        status.status = payload?.success ? 'completed' : 'failed'
+        status.result = payload?.result
+        status.error = payload?.error
+      }
+    }
+
+    // Call registered event handler if provided
+    if (this.options.onEvent) {
+      await this.options.onEvent(nodeId, msg)
     }
   }
 
@@ -128,12 +314,15 @@ export class RpcServer {
 
     const allowed = this.options.validateToken ? await this.options.validateToken(token, nodeId) : true
     if (!allowed) {
+      this.options.logger?.warn?.(`[RPC] Node ${nodeId} rejected: invalid token`)
       ws.close()
       return
     }
 
     this.clients.set(nodeId, ws)
     this.wsToNode.set(ws, nodeId)
+
+    this.options.logger?.info?.(`[RPC] Node connected: ${nodeId}`)
 
     const payload = msg.payload as unknown
     if (payload && this.options.onRegister) {
@@ -161,6 +350,7 @@ export class RpcServer {
     if (nodeId) {
       this.clients.delete(nodeId)
       this.wsToNode.delete(ws)
+      this.options.logger?.info?.(`[RPC] Node disconnected: ${nodeId}`)
     }
   }
 

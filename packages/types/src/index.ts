@@ -72,13 +72,21 @@ export { ProxyType, VisitorType } from './proxy'
 
 // RPC types
 export type {
+  CommandMessage,
+  EventMessage,
+  NodeDeletePayload,
+  NodeResponsePayload,
   PingMessage,
   PongMessage,
   RegisterMessage,
   RpcInboundMessage,
+  RpcMessage,
   RpcOutboundMessage,
   RpcRequest,
-  RpcResponse
+  RpcResponse,
+  TunnelAddPayload,
+  TunnelDeletePayload,
+  TunnelResponsePayload
 } from './rpc'
 
 // Server configuration types
