@@ -140,7 +140,7 @@ export function createProxyListQuery(deps: QueryDependencies): QueryHandler {
     }
 
     try {
-      const tunnels = deps.process.listTunnels()
+      const tunnels = await deps.process.listTunnels()
       return {
         result: tunnels,
         version: deps.runtime.snapshot().version
@@ -176,7 +176,7 @@ export function createProxyGetQuery(deps: QueryDependencies): QueryHandler {
     }
 
     try {
-      const tunnel = deps.process.getTunnel(name)
+      const tunnel = await deps.process.getTunnel(name)
       return {
         result: tunnel ?? null,
         version: deps.runtime.snapshot().version
