@@ -55,6 +55,52 @@ export function saveFrpConfigFile(
 }
 
 /**
+ * 根据代理类型获取允许的字段
+ */
+function getAllowedFields(type: string): Set<string> {
+  const commonFields = new Set(['name', 'type', 'localIP', 'localPort', 'annotations', 'metadatas'])
+
+  const typeFields: Record<string, Set<string>> = {
+    tcp: new Set([...commonFields, 'remotePort']),
+    udp: new Set([...commonFields, 'remotePort']),
+    http: new Set([...commonFields, 'customDomains', 'subdomain', 'locations', 'hostHeaderRewrite', 'httpUser', 'httpPassword']),
+    https: new Set([...commonFields, 'customDomains', 'subdomain']),
+    stcp: new Set([...commonFields, 'secretKey', 'allowUsers']),
+    xtcp: new Set([...commonFields, 'secretKey', 'allowUsers']),
+    sudp: new Set([...commonFields, 'secretKey', 'allowUsers']),
+    tcpmux: new Set([...commonFields, 'customDomains', 'subdomain', 'multiplexer', 'httpUser', 'httpPassword', 'routeByHTTPUser'])
+  }
+
+  return typeFields[type.toLowerCase()] || commonFields
+}
+
+/**
+ * 过滤 tunnel 对象，移除不属于当前类型的字段和空数组
+ */
+function filterTunnel(tunnel: ProxyConfig): ProxyConfig {
+  const allowedFields = getAllowedFields(tunnel.type)
+  const filtered: any = { name: tunnel.name, type: tunnel.type }
+
+  for (const [key, value] of Object.entries(tunnel)) {
+    // 跳过 undefined、null 和不属于当前类型的字段
+    if (value === undefined || value === null) {
+      continue
+    }
+    if (!allowedFields.has(key)) {
+      continue
+    }
+    // 跳过空数组
+    if (Array.isArray(value) && value.length === 0) {
+      continue
+    }
+
+    filtered[key] = value
+  }
+
+  return filtered
+}
+
+/**
  * 将 tunnels 数组转换为 TOML 格式
  */
 function tunnelsToToml(tunnels: ProxyConfig[]): string {
@@ -62,7 +108,9 @@ function tunnelsToToml(tunnels: ProxyConfig[]): string {
     return ''
   }
 
-  return toToml({ proxies: tunnels })
+  // 过滤掉不属于当前类型的字段和空数组
+  const filteredTunnels = tunnels.map(filterTunnel)
+  return toToml({ proxies: filteredTunnels })
 }
 
 /**

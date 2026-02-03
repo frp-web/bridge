@@ -154,6 +154,26 @@ export function saveFrpConfigFile(
 }
 
 /**
+ * 根据代理类型获取允许的字段
+ */
+function getAllowedFields(type: string): Set<string> {
+  const commonFields = new Set(['name', 'type', 'localIP', 'localPort', 'annotations', 'metadatas'])
+
+  const typeFields: Record<string, Set<string>> = {
+    tcp: new Set([...commonFields, 'remotePort']),
+    udp: new Set([...commonFields, 'remotePort']),
+    http: new Set([...commonFields, 'customDomains', 'subdomain', 'locations', 'hostHeaderRewrite', 'httpUser', 'httpPassword']),
+    https: new Set([...commonFields, 'customDomains', 'subdomain']),
+    stcp: new Set([...commonFields, 'secretKey', 'allowUsers']),
+    xtcp: new Set([...commonFields, 'secretKey', 'allowUsers']),
+    sudp: new Set([...commonFields, 'secretKey', 'allowUsers']),
+    tcpmux: new Set([...commonFields, 'customDomains', 'subdomain', 'multiplexer', 'httpUser', 'httpPassword', 'routeByHTTPUser'])
+  }
+
+  return typeFields[type.toLowerCase()] || commonFields
+}
+
+/**
  * 将 tunnels 数组转换为 TOML 格式
  */
 function tunnelsToToml(tunnels: ProxyConfig[]): string {
@@ -166,24 +186,51 @@ function tunnelsToToml(tunnels: ProxyConfig[]): string {
   for (const tunnel of tunnels) {
     lines.push('')
     lines.push('[[proxies]]')
+
+    // 获取当前代理类型允许的字段
+    const allowedFields = getAllowedFields(tunnel.type)
+
     for (const [key, value] of Object.entries(tunnel)) {
-      if (value === undefined || value === null)
+      // 跳过 undefined、null 和不属于当前类型的字段
+      if (value === undefined || value === null) {
         continue
+      }
+      if (!allowedFields.has(key)) {
+        continue
+      }
+
       if (typeof value === 'string') {
         lines.push(`${key} = "${value}"`)
       }
       else if (typeof value === 'number' || typeof value === 'boolean') {
         lines.push(`${key} = ${value}`)
       }
+      else if (Array.isArray(value)) {
+        // 处理数组类型字段，跳过空数组
+        if (value.length > 0) {
+          lines.push(`${key} = ${JSON.stringify(value)}`)
+        }
+      }
       else if (typeof value === 'object') {
-        lines.push(`[${key}]`)
+        // 处理嵌套对象（如 loadBalancer、transport 等）
+        const subLines: string[] = []
         for (const [subKey, subValue] of Object.entries(value)) {
+          if (subValue === undefined || subValue === null) {
+            continue
+          }
           if (typeof subValue === 'string') {
-            lines.push(`${subKey} = "${subValue}"`)
+            subLines.push(`${subKey} = "${subValue}"`)
           }
-          else {
-            lines.push(`${subKey} = ${subValue}`)
+          else if (typeof subValue === 'boolean' || typeof subValue === 'number') {
+            subLines.push(`${subKey} = ${subValue}`)
           }
+          else if (Array.isArray(subValue) && subValue.length > 0) {
+            subLines.push(`${subKey} = ${JSON.stringify(subValue)}`)
+          }
+        }
+        if (subLines.length > 0) {
+          lines.push(`[${key}]`)
+          lines.push(...subLines)
         }
       }
     }
