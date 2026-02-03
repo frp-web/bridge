@@ -30,6 +30,9 @@ export interface FrpBridgeRpcOptions {
   serverHeartbeatInterval?: number
   serverValidateToken?: (token: string | undefined, nodeId: string | undefined) => boolean | Promise<boolean>
   serverAuthorize?: (nodeId: string, method: string) => boolean | Promise<boolean>
+  serverOnRegister?: (nodeId: string, payload: NodeInfo) => void | Promise<void>
+  serverOnEvent?: (nodeId: string, event: import('../rpc/message-types').EventRpcMessage) => void | Promise<void>
+  serverCommandTimeout?: number
   clientUrl?: string
   clientNodeId?: string
   clientToken?: string
@@ -192,6 +195,9 @@ export class FrpBridgeInitializer {
         heartbeatInterval: rpcOptions.serverHeartbeatInterval,
         validateToken: rpcOptions.serverValidateToken,
         authorize: rpcOptions.serverAuthorize,
+        onRegister: rpcOptions.serverOnRegister,
+        onEvent: rpcOptions.serverOnEvent,
+        commandTimeout: rpcOptions.serverCommandTimeout,
         logger: consola.withTag('RpcServer')
       })
     }
