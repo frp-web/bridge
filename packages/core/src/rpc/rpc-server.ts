@@ -1,8 +1,10 @@
 import type { NodeInfo, RpcRequest, RpcResponse } from '@frp-bridge/types'
 import type { IncomingMessage } from 'node:http'
+import type { RuntimeLogger } from '../runtime'
 import type { EventRpcMessage, RegisterMessage } from './message-types'
 import { randomUUID } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
+import { createLogger } from '../logging'
 import { isEventMessage, isPongMessage, isRegisterMessage, isRpcResponse } from './message-types'
 import { safeParse } from './utils'
 
@@ -28,16 +30,12 @@ export interface RpcCommandStatus {
 export interface RpcServerOptions {
   port: number
   heartbeatInterval?: number
-  logger?: {
-    info?: (msg: string, data?: unknown) => void
-    warn?: (msg: string, data?: unknown) => void
-    error?: (msg: string, data?: unknown) => void
-  }
   validateToken?: (token: string | undefined, nodeId: string | undefined) => boolean | Promise<boolean>
   authorize?: (nodeId: string, method: string) => boolean | Promise<boolean>
   onRegister?: (nodeId: string, payload: NodeInfo) => void | Promise<void>
   onEvent?: (nodeId: string, event: EventRpcMessage) => void | Promise<void>
   commandTimeout?: number // Default timeout for command tracking
+  logger?: Partial<RuntimeLogger>
 }
 
 export class RpcServer {
@@ -48,6 +46,7 @@ export class RpcServer {
   private heartbeatTimer?: NodeJS.Timeout
   private server?: WebSocketServer
   private readonly defaultCommandTimeout: number
+  private readonly log = createLogger('RpcServer')
 
   constructor(private readonly options: RpcServerOptions) {
     this.defaultCommandTimeout = options.commandTimeout ?? 60000
@@ -64,7 +63,7 @@ export class RpcServer {
       const token = params.get('token') ?? undefined
       ws.on('message', (data: WebSocket.RawData) => {
         this.handleMessage(ws, data, token).catch((error) => {
-          this.options.logger?.error?.('rpc server handle message failed', error)
+          this.log.error('rpc server handle message failed', { error })
         })
       })
       ws.on('close', () => {
@@ -73,7 +72,7 @@ export class RpcServer {
     })
 
     this.startHeartbeat()
-    this.options.logger?.info?.('RpcServer started', { port: this.options.port })
+    this.log.success('RpcServer started', { port: this.options.port })
   }
 
   stop(): void {
@@ -124,12 +123,12 @@ export class RpcServer {
   sendToNode(nodeId: string, message: EventRpcMessage): boolean {
     const ws = this.clients.get(nodeId)
     if (!ws) {
-      this.options.logger?.error?.(`[RPC] Node not found: ${nodeId}`)
+      this.log.error(`Node not found: ${nodeId}`)
       return false
     }
 
     if (ws.readyState !== WebSocket.OPEN) {
-      this.options.logger?.error?.(`[RPC] Node not ready: ${nodeId}`)
+      this.log.error(`Node not ready: ${nodeId}`)
       return false
     }
 
@@ -152,7 +151,7 @@ export class RpcServer {
           if (status && status.status === 'pending') {
             status.status = 'failed'
             status.error = 'Command timeout'
-            this.options.logger?.warn?.(`[RPC] Command ${message.id} (${message.action}) timeout`)
+            this.log.warn(`Command ${message.id} (${message.action}) timeout`)
           }
         }, this.defaultCommandTimeout)
       }
@@ -160,7 +159,7 @@ export class RpcServer {
       return true
     }
     catch (error) {
-      this.options.logger?.error?.(`[RPC] Send failed to ${nodeId}:`, error)
+      this.log.error(`Send failed to ${nodeId}:`, { error })
       return false
     }
   }
@@ -180,13 +179,13 @@ export class RpcServer {
           successCount++
         }
         catch (error) {
-          this.options.logger?.error?.(`[RPC] Broadcast failed to ${nodeId}:`, error)
+          this.log.error(`Broadcast failed to ${nodeId}:`, { error })
           failCount++
         }
       }
     }
 
-    this.options.logger?.info?.(`[RPC] Broadcast completed`, {
+    this.log.info('Broadcast completed', {
       total: this.clients.size,
       success: successCount,
       failed: failCount
@@ -279,11 +278,11 @@ export class RpcServer {
   private async handleEventMessage(ws: WebSocket, msg: EventRpcMessage): Promise<void> {
     const nodeId = this.wsToNode.get(ws)
     if (!nodeId) {
-      this.options.logger?.warn?.('[RPC] Received event from unregistered client')
+      this.log.warn('Received event from unregistered client')
       return
     }
 
-    this.options.logger?.info?.(`[RPC] Event from ${nodeId}`, {
+    this.log.info(`Event from ${nodeId}`, {
       action: msg.action,
       payload: msg.payload
     })
@@ -314,7 +313,7 @@ export class RpcServer {
 
     const allowed = this.options.validateToken ? await this.options.validateToken(token, nodeId) : true
     if (!allowed) {
-      this.options.logger?.warn?.(`[RPC] Node ${nodeId} rejected: invalid token`)
+      this.log.warn(`Node ${nodeId} rejected: invalid token`)
       ws.close()
       return
     }
@@ -322,7 +321,7 @@ export class RpcServer {
     this.clients.set(nodeId, ws)
     this.wsToNode.set(ws, nodeId)
 
-    this.options.logger?.info?.(`[RPC] Node connected: ${nodeId}`)
+    this.log.success(`Node connected: ${nodeId}`)
 
     const payload = msg.payload as unknown
     if (payload && this.options.onRegister) {
@@ -350,7 +349,7 @@ export class RpcServer {
     if (nodeId) {
       this.clients.delete(nodeId)
       this.wsToNode.delete(ws)
-      this.options.logger?.info?.(`[RPC] Node disconnected: ${nodeId}`)
+      this.log.info(`Node disconnected: ${nodeId}`)
     }
   }
 

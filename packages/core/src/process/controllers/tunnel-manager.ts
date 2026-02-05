@@ -8,6 +8,7 @@ import type { RuntimeLogger } from '../../runtime'
 import type { ConfigurationStore, FrpConfig } from './configuration-store'
 import { ProxyType } from '@frp-bridge/types'
 import { ConfigInvalidError, NotFoundError } from '../../errors'
+import { createLogger } from '../../logging'
 
 /**
  * Extended config type that includes proxies array
@@ -36,6 +37,7 @@ export class TunnelManager {
   private readonly configStore: ConfigurationStore
   private readonly configPath: string
   private readonly logger: RuntimeLogger
+  private readonly log = createLogger('Tunnel')
 
   constructor(options: TunnelManagerOptions) {
     this.configStore = options.configStore
@@ -64,6 +66,8 @@ export class TunnelManager {
 
     // 5. Save
     await this.configStore.save(this.configPath, parsed as FrpConfig)
+
+    this.log.success('Tunnel added', { name: proxy.name, type: proxy.type })
   }
 
   /**
@@ -72,12 +76,17 @@ export class TunnelManager {
   async get(name: string): Promise<ProxyConfig | null> {
     const config = await this.loadConfig() as ExtendedFrpConfig | null
     if (!config) {
+      this.log.debug('Tunnel not found: config is empty', { name })
       return null
     }
 
     // Handle [[proxies]] array syntax
     if (Array.isArray(config.proxies)) {
-      return config.proxies.find((p: any) => p && p.name === name) as ProxyConfig || null
+      const tunnel = config.proxies.find((p: any) => p && p.name === name) as ProxyConfig || null
+      if (!tunnel) {
+        this.log.debug('Tunnel not found in proxies array', { name })
+      }
+      return tunnel
     }
 
     // Handle legacy format
@@ -120,6 +129,8 @@ export class TunnelManager {
     }
 
     await this.configStore.save(this.configPath, config as FrpConfig)
+
+    this.log.success('Tunnel updated', { name, changes: Object.keys(proxy) })
   }
 
   /**
@@ -128,6 +139,7 @@ export class TunnelManager {
   async remove(name: string): Promise<void> {
     const config = await this.loadConfig() as ExtendedFrpConfig | null
     if (!config) {
+      this.log.debug('Cannot remove tunnel: config is empty', { name })
       return
     }
 
@@ -139,12 +151,20 @@ export class TunnelManager {
       if (tunnelIndex !== -1) {
         config.proxies.splice(tunnelIndex, 1)
         modified = true
+        this.log.success('Tunnel removed', { name })
+      }
+      else {
+        this.log.debug('Tunnel not found for removal', { name })
       }
     }
     // Handle legacy format
     else if ((config as any)[name]) {
       delete (config as any)[name]
       modified = true
+      this.log.success('Tunnel removed', { name })
+    }
+    else {
+      this.log.debug('Tunnel not found for removal', { name })
     }
 
     if (modified) {
@@ -158,6 +178,7 @@ export class TunnelManager {
   async list(): Promise<ProxyConfig[]> {
     const config = await this.loadConfig() as ExtendedFrpConfig | null
     if (!config) {
+      this.log.debug('List tunnels: config is empty')
       return []
     }
 
@@ -186,6 +207,7 @@ export class TunnelManager {
       }
     }
 
+    this.log.debug('Listed tunnels', { count: tunnels.length })
     return tunnels
   }
 
@@ -211,7 +233,15 @@ export class TunnelManager {
       errors.push('Tunnel type is required')
     }
 
-    return { valid: errors.length === 0, errors }
+    const valid = errors.length === 0
+    if (valid) {
+      this.log.debug('Tunnel validation passed', { name: proxy.name, type: proxy.type })
+    }
+    else {
+      this.log.warn('Tunnel validation failed', { errors })
+    }
+
+    return { valid, errors }
   }
 
   /**
@@ -233,6 +263,7 @@ export class TunnelManager {
     // Check name uniqueness
     const existingName = proxies.find((p: any) => p && p.name === proxy.name)
     if (existingName) {
+      this.log.warn('Tunnel name already exists', { name: proxy.name })
       throw new ConfigInvalidError(`Tunnel ${proxy.name} already exists`)
     }
 
@@ -241,6 +272,8 @@ export class TunnelManager {
     if (proxyRemotePort && this.typeUsesRemotePort(proxy.type)) {
       this.validateRemotePort(proxies, proxyRemotePort, proxy.type)
     }
+
+    this.log.debug('Tunnel uniqueness validation passed', { name: proxy.name })
   }
 
   /**
@@ -259,8 +292,11 @@ export class TunnelManager {
     })
 
     if (inUse) {
+      this.log.warn('Remote port already in use', { remotePort, type })
       throw new ConfigInvalidError(`Remote port ${remotePort} is already in use`)
     }
+
+    this.log.debug('Remote port validation passed', { remotePort, type })
   }
 
   /**

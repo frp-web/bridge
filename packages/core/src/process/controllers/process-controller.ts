@@ -8,8 +8,8 @@ import type { RuntimeLogger } from '../../runtime'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
-import { consola } from 'consola'
 import { BinaryNotFoundError, ConfigNotFoundError, GenericError } from '../../errors'
+import { createLogger } from '../../logging'
 
 export interface ProcessHandle {
   /** Process ID */
@@ -62,6 +62,7 @@ export interface ProcessControllerOptions {
  */
 export class ProcessController extends EventEmitter {
   private readonly logger: RuntimeLogger
+  private readonly log = createLogger('Process')
   private process: ChildProcess | null = null
   private processStartTime: number | null = null
   private currentBinaryPath: string = ''
@@ -71,7 +72,7 @@ export class ProcessController extends EventEmitter {
 
   constructor(options: ProcessControllerOptions = {}) {
     super()
-    this.logger = options.logger ?? consola.withTag('ProcessController')
+    this.logger = options.logger ?? console
   }
 
   /**
@@ -94,6 +95,7 @@ export class ProcessController extends EventEmitter {
     this.currentConfigPath = configPath
 
     // 4. Spawn the process
+    this.log.info('Starting process', { binaryPath, configPath })
     this.process = spawn(binaryPath, ['-c', configPath], {
       stdio: 'inherit'
     })
@@ -106,6 +108,7 @@ export class ProcessController extends EventEmitter {
 
     // 5. Emit start event
     const handle = this.createProcessHandle()
+    this.log.success('Process started', { pid: handle.pid, configPath })
     this.emit('process:started', {
       type: 'process:started',
       timestamp: Date.now(),
@@ -128,6 +131,9 @@ export class ProcessController extends EventEmitter {
 
     this.isManualStop = true
     const proc = this.process
+    const pid = proc.pid
+
+    this.log.info('Stopping process', { pid })
 
     return new Promise<void>((resolve) => {
       const exitHandler = () => {
@@ -140,6 +146,7 @@ export class ProcessController extends EventEmitter {
         } satisfies ProcessControllerEvent)
 
         this.processStartTime = null
+        this.log.success('Process stopped', { pid, uptime })
         resolve()
       }
 
@@ -150,7 +157,7 @@ export class ProcessController extends EventEmitter {
         // Force kill after timeout
         setTimeout(() => {
           if (proc.exitCode === null) {
-            this.logger.warn('Process did not exit gracefully, forcing kill')
+            this.log.warn('Process did not exit gracefully, forcing kill', { pid })
             proc.kill('SIGKILL')
           }
         }, this.gracefulTimeout)
@@ -170,6 +177,8 @@ export class ProcessController extends EventEmitter {
     // Save current config
     const currentBinaryPath = binaryPath
     const currentConfigPath = configPath
+
+    this.log.info('Restarting process', { binaryPath, configPath })
 
     // Stop if running
     if (this.isRunning()) {
@@ -255,6 +264,7 @@ export class ProcessController extends EventEmitter {
       const uptime = this.processStartTime ? Date.now() - this.processStartTime : undefined
 
       if (!this.isManualStop) {
+        this.log.error('Process exited unexpectedly', { code, signal, uptime })
         this.emit('process:exited', {
           type: 'process:exited',
           timestamp: Date.now(),
@@ -272,6 +282,7 @@ export class ProcessController extends EventEmitter {
     })
 
     this.process.on('error', (error) => {
+      this.log.error('Process error', { error: error.message, pid: this.process?.pid })
       this.emit('process:error', {
         type: 'process:error',
         timestamp: Date.now(),

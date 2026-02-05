@@ -13,13 +13,14 @@ import type {
   ProxyConfig,
   TunnelSyncPayload
 } from '@frp-bridge/types'
-import type { RuntimeContext } from '../runtime'
+import type { RuntimeContext, RuntimeLogger } from '../runtime'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { createLogger } from '../logging'
 
 export interface NodeManagerOptions {
   heartbeatTimeout?: number // ms, default 90s
-  logger?: any // RuntimeLogger
+  logger?: Partial<RuntimeLogger>
 }
 
 export interface NodeStorage {
@@ -46,7 +47,7 @@ export class NodeManager extends EventEmitter {
   private tunnelRegistry = new Map<string, ProxyConfig[]>() // nodeId -> tunnels
   private storage?: NodeStorage
   private heartbeatTimeout: number
-  private logger?: any
+  private readonly log = createLogger('NodeMgr')
 
   constructor(
     private context: RuntimeContext,
@@ -55,7 +56,6 @@ export class NodeManager extends EventEmitter {
   ) {
     super()
     this.heartbeatTimeout = options.heartbeatTimeout ?? 90000
-    this.logger = options.logger
     this.storage = storage
   }
 
@@ -68,10 +68,10 @@ export class NodeManager extends EventEmitter {
           this.nodes.set(node.id, node)
           this.setupHeartbeatTimer(node.id)
         }
-        this.logger?.info?.(`Loaded ${persistedNodes.length} nodes from storage`)
+        this.log.info(`Loaded ${persistedNodes.length} nodes from storage`)
       }
       catch (error) {
-        this.logger?.error?.('Failed to load nodes from storage', { error })
+        this.log.error('Failed to load nodes from storage', { error })
       }
     }
   }
@@ -113,7 +113,7 @@ export class NodeManager extends EventEmitter {
         await this.storage.save(nodeInfo)
       }
       catch (error) {
-        this.logger?.error?.('Failed to save node', { nodeId, error })
+        this.log.error('Failed to save node', { nodeId, error })
       }
     }
 
@@ -123,14 +123,17 @@ export class NodeManager extends EventEmitter {
       payload: { nodeId, nodeInfo }
     })
 
+    this.log.success('Node registered', { nodeId, hostname: payload.hostname, ip: payload.ip })
     return nodeInfo
   }
 
   /** Update node heartbeat and status */
   async updateHeartbeat(payload: NodeHeartbeatPayload): Promise<void> {
     const node = this.nodes.get(payload.nodeId)
-    if (!node)
+    if (!node) {
+      this.log.debug('Heartbeat for unknown node', { nodeId: payload.nodeId })
       return
+    }
 
     const oldStatus = node.status
     const now = Date.now()
@@ -155,7 +158,7 @@ export class NodeManager extends EventEmitter {
         await this.storage.save(node)
       }
       catch (error) {
-        this.logger?.error?.('Failed to save node heartbeat', { nodeId: payload.nodeId, error })
+        this.log.error('Failed to save node heartbeat', { nodeId: payload.nodeId, error })
       }
     }
 
@@ -168,6 +171,7 @@ export class NodeManager extends EventEmitter {
 
     // Emit status change event if status changed
     if (oldStatus !== payload.status) {
+      this.log.info('Node status changed', { nodeId: payload.nodeId, oldStatus, newStatus: payload.status })
       this.emit('node:statusChanged', {
         type: 'node:statusChanged',
         timestamp: now,
@@ -179,8 +183,10 @@ export class NodeManager extends EventEmitter {
   /** Unregister a node (called when client disconnects) */
   async unregisterNode(nodeId: string): Promise<void> {
     const node = this.nodes.get(nodeId)
-    if (!node)
+    if (!node) {
+      this.log.debug('Attempted to unregister unknown node', { nodeId })
       return
+    }
 
     const now = Date.now()
 
@@ -194,7 +200,7 @@ export class NodeManager extends EventEmitter {
         await this.storage.delete(nodeId)
       }
       catch (error) {
-        this.logger?.error?.('Failed to delete node', { nodeId, error })
+        this.log.error('Failed to delete node', { nodeId, error })
       }
     }
 
@@ -203,6 +209,8 @@ export class NodeManager extends EventEmitter {
       timestamp: now,
       payload: { nodeId }
     })
+
+    this.log.info('Node unregistered', { nodeId, hostname: node.hostname })
   }
 
   /** Get node by id */
@@ -326,7 +334,7 @@ export class NodeManager extends EventEmitter {
         await this.storage.save(node)
       }
       catch (error) {
-        this.logger?.error?.('Failed to save node after timeout', { nodeId, error })
+        this.log.error('Failed to save node after timeout', { nodeId, error })
       }
     }
 
@@ -335,6 +343,8 @@ export class NodeManager extends EventEmitter {
       timestamp: Date.now(),
       payload: { nodeId, oldStatus, newStatus: 'offline', reason: 'heartbeat_timeout' }
     })
+
+    this.log.warn('Node heartbeat timeout', { nodeId, hostname: node.hostname })
   }
 
   // ==================== Tunnel Registry Methods ====================
@@ -345,7 +355,7 @@ export class NodeManager extends EventEmitter {
     const node = this.nodes.get(nodeId)
 
     if (!node) {
-      this.logger?.warn?.('Tunnel sync failed: node not found', { nodeId })
+      this.log.warn('Tunnel sync failed: node not found', { nodeId })
       return
     }
 
@@ -362,7 +372,7 @@ export class NodeManager extends EventEmitter {
         await this.storage.save(node)
       }
       catch (error) {
-        this.logger?.error?.('Failed to save node after tunnel sync', { nodeId, error })
+        this.log.error('Failed to save node after tunnel sync', { nodeId, error })
       }
     }
 
@@ -372,7 +382,7 @@ export class NodeManager extends EventEmitter {
       payload: { nodeId, tunnelCount: tunnels.length }
     })
 
-    this.logger?.info?.('Tunnels synced for node', { nodeId, tunnelCount: tunnels.length })
+    this.log.success('Tunnels synced for node', { nodeId, tunnelCount: tunnels.length })
   }
 
   /** Get tunnels for a specific node */
@@ -411,7 +421,7 @@ export class NodeManager extends EventEmitter {
   /** Clear tunnels for a node (called when node disconnects) */
   private clearNodeTunnels(nodeId: string): void {
     this.tunnelRegistry.delete(nodeId)
-    this.logger?.info?.('Cleared tunnels for node', { nodeId })
+    this.log.debug('Cleared tunnels for node', { nodeId })
   }
 
   /** Update dispose method to clear tunnels */
@@ -424,5 +434,7 @@ export class NodeManager extends EventEmitter {
 
     // Clear tunnel registry
     this.tunnelRegistry.clear()
+
+    this.log.info('NodeManager disposed')
   }
 }

@@ -1,7 +1,9 @@
 import type { NodeInfo, RpcRequest } from '@frp-bridge/types'
+import type { RuntimeLogger } from '../runtime'
 import type { CommandRpcMessage, EventRpcMessageEvent } from './message-types'
 import type { ReconnectStrategy } from './reconnect-strategy'
 import { WebSocket } from 'ws'
+import { createLogger } from '../logging'
 import { isCommandMessage, isPingMessage, isRpcRequest } from './message-types'
 import { ExponentialBackoffStrategy } from './reconnect-strategy'
 import { safeParse } from './utils'
@@ -13,11 +15,7 @@ export interface RpcClientOptions {
   handleRequest: (req: RpcRequest) => Promise<unknown>
   handleCommand?: (command: CommandRpcMessage) => Promise<unknown>
   reconnectStrategy?: ReconnectStrategy
-  logger?: {
-    info?: (msg: string, data?: unknown) => void
-    warn?: (msg: string, data?: unknown) => void
-    error?: (msg: string, data?: unknown) => void
-  }
+  logger?: Partial<RuntimeLogger>
 }
 
 export class RpcClient {
@@ -26,6 +24,7 @@ export class RpcClient {
   private reconnectAttempt = 0
   private readonly reconnectStrategy: ReconnectStrategy
   private connectionState: 'connecting' | 'connected' | 'disconnected' = 'disconnected'
+  private readonly log = createLogger('RpcClient')
 
   constructor(private readonly options: RpcClientOptions) {
     this.reconnectStrategy = options.reconnectStrategy ?? new ExponentialBackoffStrategy()
@@ -42,6 +41,7 @@ export class RpcClient {
     this.ws?.close()
     this.ws = null
     this.connectionState = 'disconnected'
+    this.log.info('Disconnected from server')
   }
 
   /**
@@ -63,7 +63,7 @@ export class RpcClient {
    */
   sendEvent(event: EventRpcMessageEvent): boolean {
     if (!this.isConnected()) {
-      this.options.logger?.warn?.('[RPC Client] Not connected, cannot send event')
+      this.log.warn('Not connected, cannot send event')
       return false
     }
 
@@ -72,7 +72,7 @@ export class RpcClient {
       return true
     }
     catch (error) {
-      this.options.logger?.error?.('[RPC Client] Send event error:', error)
+      this.log.error('Send event error:', { error })
       return false
     }
   }
@@ -89,29 +89,30 @@ export class RpcClient {
           this.send({ type: 'register', nodeId: this.options.nodeId, payload })
           this.connectionState = 'connected'
           this.reconnectAttempt = 0 // Reset on successful connection
-          this.options.logger?.info?.(`[RPC Client] Connected to server as ${this.options.nodeId}`)
+          this.log.success(`Connected to server as ${this.options.nodeId}`)
           resolve()
         }
         catch (error) {
           this.connectionState = 'disconnected'
-          this.options.logger?.error?.('rpc client register failed', error)
+          this.log.error('rpc client register failed', { error })
           reject(error)
         }
       })
 
       ws.on('message', (data: WebSocket.RawData) => {
         this.handleMessage(data).catch((error) => {
-          this.options.logger?.error?.('rpc client handle message failed', error)
+          this.log.error('rpc client handle message failed', { error })
         })
       })
 
       ws.on('close', () => {
         this.connectionState = 'disconnected'
+        this.log.info('Connection closed, scheduling reconnect')
         this.scheduleReconnect()
       })
 
       ws.on('error', (error: Error) => {
-        this.options.logger?.warn?.('rpc client socket error', error)
+        this.log.warn('rpc client socket error', { error })
         this.scheduleReconnect()
         reject(error)
       })
@@ -144,7 +145,7 @@ export class RpcClient {
    * Handle event-based command messages from server (matching document spec)
    */
   private async handleCommandEvent(command: CommandRpcMessage): Promise<void> {
-    this.options.logger?.info?.(`[RPC Client] Received command: ${command.action}`)
+    this.log.info(`Received command: ${command.action}`)
 
     try {
       // Call custom command handler if provided
@@ -220,6 +221,7 @@ export class RpcClient {
     // Check if should reconnect
     if (!this.reconnectStrategy.shouldReconnect(this.reconnectAttempt)) {
       this.reconnectStrategy.onMaxAttemptsReached()
+      this.log.error('Max reconnection attempts reached')
       return
     }
 
@@ -229,11 +231,11 @@ export class RpcClient {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined
       this.createConnection().catch((error) => {
-        this.options.logger?.error?.('rpc client reconnect failed', error)
+        this.log.error('rpc client reconnect failed', { error })
         this.scheduleReconnect()
       })
     }, delay)
 
-    this.options.logger?.info?.(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`)
+    this.log.info(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`)
   }
 }

@@ -110,6 +110,7 @@ export interface TunnelAddPayload {
   remotePort?: number
   customDomains?: string[]
   subdomain?: string
+  nodeId?: string
   [key: string]: unknown
 }
 
@@ -118,6 +119,7 @@ export interface TunnelAddPayload {
  */
 export interface TunnelDeletePayload {
   name: string
+  nodeId?: string
 }
 
 /**

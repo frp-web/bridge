@@ -6,6 +6,7 @@
 import type { ClientConfig } from '@frp-bridge/types'
 import type { RuntimeLogger } from '../../runtime'
 import type { ConfigurationStore } from './configuration-store'
+import { createLogger } from '../../logging'
 
 export interface NodeInfo {
   /** Node ID */
@@ -33,7 +34,7 @@ export interface NodeManagerOptions {
   /** Config file path */
   configPath: string
   /** Optional logger */
-  logger?: RuntimeLogger
+  logger?: Partial<RuntimeLogger>
 }
 
 /**
@@ -42,12 +43,11 @@ export interface NodeManagerOptions {
 export class NodeManager {
   private readonly configStore: ConfigurationStore
   private readonly configPath: string
-  private readonly logger: RuntimeLogger
+  private readonly log = createLogger('Node')
 
   constructor(options: NodeManagerOptions) {
     this.configStore = options.configStore
     this.configPath = options.configPath
-    this.logger = options.logger ?? console
   }
 
   /**
@@ -68,6 +68,8 @@ export class NodeManager {
     }
 
     await this.configStore.save(this.configPath, config)
+
+    this.log.success('Node configured', { serverAddr: node.serverAddr, serverPort: node.serverPort ?? 7000 })
   }
 
   /**
@@ -76,6 +78,7 @@ export class NodeManager {
   async getNode(): Promise<NodeInfo | null> {
     const config = await this.loadConfig()
     if (!config || !config.serverAddr) {
+      this.log.debug('Node not configured')
       return null
     }
 
@@ -111,6 +114,8 @@ export class NodeManager {
     }
 
     await this.configStore.save(this.configPath, config)
+
+    this.log.success('Node updated', { updates: Object.keys(updates) })
   }
 
   /**
@@ -123,6 +128,10 @@ export class NodeManager {
 
     if (existsSync(this.configPath)) {
       unlinkSync(this.configPath)
+      this.log.success('Node configuration cleared')
+    }
+    else {
+      this.log.debug('No node configuration to clear')
     }
   }
 
@@ -142,7 +151,15 @@ export class NodeManager {
       }
     }
 
-    return { valid: errors.length === 0, errors }
+    const valid = errors.length === 0
+    if (!valid) {
+      this.log.warn('Node validation failed', { errors })
+    }
+    else {
+      this.log.debug('Node validation passed', { serverAddr: node.serverAddr })
+    }
+
+    return { valid, errors }
   }
 
   /**

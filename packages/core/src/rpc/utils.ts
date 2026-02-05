@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws'
+import type { RuntimeLogger } from '../runtime'
 import { Buffer } from 'node:buffer'
 
 export function normalizeWebSocketData(data: WebSocket.RawData): string {
@@ -19,14 +20,14 @@ export function normalizeWebSocketData(data: WebSocket.RawData): string {
 
 export function safeParse(
   data: WebSocket.RawData,
-  logger?: { warn?: (msg: string, data?: unknown) => void }
+  logger?: Partial<RuntimeLogger>
 ): any | undefined {
   try {
     const text = normalizeWebSocketData(data)
     return JSON.parse(text)
   }
   catch (error) {
-    logger?.warn?.('parse message failed', error)
+    logger?.warn?.('parse message failed', error as Record<string, unknown>)
     return undefined
   }
 }

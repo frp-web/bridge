@@ -1,4 +1,4 @@
-import type { NodeHeartbeatPayload, NodeRegisterPayload } from '@frp-bridge/types'
+import type { NodeHeartbeatPayload, NodeRegisterPayload, ProxyConfig } from '@frp-bridge/types'
 import type { NodeManager } from '../../node'
 import type { FrpProcessManager } from '../../process'
 import type { RpcServer } from '../../rpc'
@@ -530,9 +530,9 @@ const validateNodeDelete: Validator<NodeDeletePayload> = (payload) => {
  */
 async function tunnelAddLocal(payload: TunnelAddPayload, deps: CommandDependencies): Promise<CommandResult> {
   // Convert TunnelAddPayload to ProxyConfig format
-  const proxyConfig = {
+  const proxyConfig: ProxyConfig = {
     name: payload.name,
-    type: payload.type,
+    type: payload.type as ProxyConfig['type'],
     localIP: '127.0.0.1',
     localPort: payload.localPort,
     ...(payload.remotePort && { remotePort: payload.remotePort }),

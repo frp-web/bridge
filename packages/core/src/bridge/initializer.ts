@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import process from 'node:process'
 import { consola } from 'consola'
 import { join } from 'pathe'
+import { setGlobalLoggerOptions } from '../logging'
 import { ClientNodeCollector, FileNodeStorage, NodeManager } from '../node'
 import { FrpProcessManager } from '../process'
 import { RpcClient, RpcServer } from '../rpc'
@@ -76,6 +77,13 @@ export class FrpBridgeInitializer {
    */
   initialize(): InitializationResult {
     const { rootWorkDir, runtimeDir, processDir } = this.setupDirectories()
+
+    // Configure global logger options with workspace root
+    setGlobalLoggerOptions({
+      workspaceRoot: rootWorkDir,
+      enableFile: true
+    })
+
     const loggers = this.createLoggers()
 
     const process = this.createProcessManager(processDir, loggers.processLogger)
@@ -102,7 +110,7 @@ export class FrpBridgeInitializer {
    * Setup and create working directories
    */
   private setupDirectories(): { rootWorkDir: string, runtimeDir: string, processDir: string } {
-    const rootWorkDir = this.config.workDir ?? join(homedir(), '.frp-bridge')
+    const rootWorkDir = this.config.workDir ?? join(homedir(), '.frp-web')
     const runtimeDir = this.config.runtime?.workDir ?? join(rootWorkDir, 'runtime')
     const processDir = this.config.process?.workDir ?? join(rootWorkDir, 'process')
 
