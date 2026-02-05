@@ -1,7 +1,7 @@
 {
   "name": "frp-bridge-monorepo",
   "type": "module",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "packageManager": "pnpm@10.28.2",
   "description": "Frp bridge",
