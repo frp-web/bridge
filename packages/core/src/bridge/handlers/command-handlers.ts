@@ -6,6 +6,7 @@ import type { NodeDeletePayload, TunnelAddPayload, TunnelDeletePayload } from '.
 import type { CommandHandler, CommandHandlerContext, CommandResult, RuntimeEvent } from '../../runtime'
 import type { ConfigApplyPayload, ConfigApplyRawPayload, ProxyAddPayload, ProxyRemovePayload, ProxyUpdatePayload } from '../types'
 import type { Validator } from './decorators'
+import { omitUndefined } from '../../utils'
 import {
   compose,
   presets,
@@ -530,15 +531,15 @@ const validateNodeDelete: Validator<NodeDeletePayload> = (payload) => {
  */
 async function tunnelAddLocal(payload: TunnelAddPayload, deps: CommandDependencies): Promise<CommandResult> {
   // Convert TunnelAddPayload to ProxyConfig format
-  const proxyConfig: ProxyConfig = {
+  const proxyConfig: ProxyConfig = omitUndefined({
     name: payload.name,
     type: payload.type as ProxyConfig['type'],
     localIP: '127.0.0.1',
     localPort: payload.localPort,
-    ...(payload.remotePort && { remotePort: payload.remotePort }),
-    ...(payload.customDomains && { customDomains: payload.customDomains }),
-    ...(payload.subdomain && { subdomain: payload.subdomain })
-  }
+    remotePort: payload.remotePort,
+    customDomains: payload.customDomains,
+    subdomain: payload.subdomain
+  })
 
   deps.process.addTunnel(proxyConfig)
   return {

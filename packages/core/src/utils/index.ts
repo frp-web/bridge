@@ -269,6 +269,20 @@ export function toToml(obj: Record<string, any>): string {
   return lines.join('\n').trim()
 }
 
+/**
+ * Omit undefined values from an object
+ * Returns a new object with only defined values
+ */
+export function omitUndefined<T extends Record<string, any>>(obj: T): T {
+  const result = {} as T
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      ;(result as any)[key] = value
+    }
+  }
+  return result
+}
+
 function formatTomlValue(key: string, value: any): string {
   if (typeof value === 'string') {
     return `${key} = "${value}"`
