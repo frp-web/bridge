@@ -18,6 +18,7 @@ import type {
 
 const ERROR_UNKNOWN_COMMAND = 'Unknown command'
 const ERROR_UNKNOWN_QUERY = 'Unknown query'
+const MAX_EVENT_BUFFER_SIZE = 1000
 
 export class FrpRuntime {
   private readonly storage?: SnapshotStorage
@@ -148,6 +149,12 @@ export class FrpRuntime {
         version: event.version ?? this.state.version
       })
     })
+
+    // Prevent unbounded memory growth by limiting buffer size
+    if (this.eventBuffer.length > MAX_EVENT_BUFFER_SIZE) {
+      // Keep only the most recent events
+      this.eventBuffer = this.eventBuffer.slice(-MAX_EVENT_BUFFER_SIZE)
+    }
   }
 
   private bumpVersion(author: string | undefined, ref: { bumped: boolean }): number {
@@ -171,10 +178,7 @@ export class FrpRuntime {
   }
 
   private async persistSnapshot(snapshot: ConfigSnapshot, author?: string): Promise<void> {
-    if (!this.storage) {
-      return
-    }
-    if (!snapshot) {
+    if (!this.storage || !snapshot) {
       return
     }
     await this.storage.save({
