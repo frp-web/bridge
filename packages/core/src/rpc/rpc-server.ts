@@ -42,14 +42,21 @@ export class RpcServer {
   private readonly clients = new Map<string, WebSocket>()
   private readonly pendingRequests = new Map<string, PendingRequest>()
   private readonly commandStatuses = new Map<string, RpcCommandStatus>()
+  private readonly commandTimers = new Map<string, NodeJS.Timeout>()
   private readonly wsToNode = new Map<WebSocket, string>()
   private heartbeatTimer?: NodeJS.Timeout
+  private cleanupTimer?: NodeJS.Timeout
   private server?: WebSocketServer
   private readonly defaultCommandTimeout: number
   private readonly log = createLogger('RpcServer')
 
   constructor(private readonly options: RpcServerOptions) {
     this.defaultCommandTimeout = options.commandTimeout ?? 60000
+
+    // Auto-cleanup old statuses every 10 minutes
+    this.cleanupTimer = setInterval(() => {
+      this.clearOldStatuses()
+    }, 10 * 60 * 1000)
   }
 
   start(): void {
@@ -76,15 +83,26 @@ export class RpcServer {
   }
 
   stop(): void {
+    // Clear timers
     this.heartbeatTimer && clearInterval(this.heartbeatTimer)
     this.heartbeatTimer = undefined
 
+    this.cleanupTimer && clearInterval(this.cleanupTimer)
+    this.cleanupTimer = undefined
+
+    // Clear pending request timers
     this.pendingRequests.forEach(p => clearTimeout(p.timer))
     this.pendingRequests.clear()
 
+    // Clear command timers
+    this.commandTimers.forEach(t => clearTimeout(t))
+    this.commandTimers.clear()
+
+    // Close connections
     this.clients.forEach(ws => ws.close())
     this.clients.clear()
     this.wsToNode.clear()
+    this.commandStatuses.clear()
 
     this.server?.close()
     this.server = undefined
@@ -145,8 +163,15 @@ export class RpcServer {
           timestamp: Date.now()
         })
 
-        // Set timeout to mark as failed if no response
-        setTimeout(() => {
+        // Clear existing timer if any
+        const existingTimer = this.commandTimers.get(message.id)
+        if (existingTimer) {
+          clearTimeout(existingTimer)
+        }
+
+        // Set timeout to mark as failed if no response (with timer tracking for cleanup)
+        const timer = setTimeout(() => {
+          this.commandTimers.delete(message.id!)
           const status = this.commandStatuses.get(message.id!)
           if (status && status.status === 'pending') {
             status.status = 'failed'
@@ -154,6 +179,7 @@ export class RpcServer {
             this.log.warn(`Command ${message.id} (${message.action}) timeout`)
           }
         }, this.defaultCommandTimeout)
+        this.commandTimers.set(message.id, timer)
       }
 
       return true
@@ -242,6 +268,12 @@ export class RpcServer {
     for (const [id, status] of this.commandStatuses.entries()) {
       if (status.status !== 'pending' && (now - status.timestamp) > maxAge) {
         this.commandStatuses.delete(id)
+        // Also cleanup associated timer
+        const timer = this.commandTimers.get(id)
+        if (timer) {
+          clearTimeout(timer)
+          this.commandTimers.delete(id)
+        }
       }
     }
   }
@@ -356,15 +388,31 @@ export class RpcServer {
   private startHeartbeat(): void {
     const interval = this.options.heartbeatInterval ?? 30000
     this.heartbeatTimer = setInterval(() => {
+      // Collect disconnected nodes first, then delete them
+      // to avoid modifying Map during iteration
+      const disconnected: string[] = []
+      const payload = { type: 'ping', timestamp: Date.now() }
+
       this.clients.forEach((client, nodeId) => {
         if (client.readyState === WebSocket.OPEN) {
-          const payload = { type: 'ping', timestamp: Date.now() }
-          client.send(JSON.stringify(payload))
+          try {
+            client.send(JSON.stringify(payload))
+          }
+          catch (error) {
+            this.log.warn(`Failed to send ping to ${nodeId}:`, { error })
+            disconnected.push(nodeId)
+          }
         }
         else {
-          this.clients.delete(nodeId)
+          disconnected.push(nodeId)
         }
       })
+
+      // Remove disconnected clients
+      for (const nodeId of disconnected) {
+        this.clients.delete(nodeId)
+        this.log.info(`Node ${nodeId} disconnected (heartbeat)`)
+      }
     }, interval)
   }
 }
