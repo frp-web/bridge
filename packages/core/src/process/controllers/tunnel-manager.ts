@@ -6,9 +6,9 @@
 import type { ProxyConfig } from '@frp-bridge/types'
 import type { RuntimeLogger } from '../../runtime'
 import type { ConfigurationStore, FrpConfig } from './configuration-store'
-import { ProxyType } from '@frp-bridge/types'
 import { ConfigInvalidError, NotFoundError } from '../../errors'
 import { createLogger } from '../../logging'
+import { typeUsesRemotePort } from '../../utils'
 
 /**
  * Extended config type that includes proxies array
@@ -82,7 +82,7 @@ export class TunnelManager {
 
     // Handle [[proxies]] array syntax
     if (Array.isArray(config.proxies)) {
-      const tunnel = config.proxies.find((p: any) => p && p.name === name) as ProxyConfig || null
+      const tunnel = config.proxies.find(p => p && p.name === name) || null
       if (!tunnel) {
         this.log.debug('Tunnel not found in proxies array', { name })
       }
@@ -90,7 +90,7 @@ export class TunnelManager {
     }
 
     // Handle legacy format
-    return (config as any)[name] as ProxyConfig || null
+    return (config as Record<string, unknown>)[name] as ProxyConfig || null
   }
 
   /**
@@ -104,7 +104,7 @@ export class TunnelManager {
 
     // Handle [[proxies]] array syntax
     if (Array.isArray(config.proxies)) {
-      const tunnelIndex = config.proxies.findIndex((p: any) => p && p.name === name)
+      const tunnelIndex = config.proxies.findIndex(p => p && p.name === name)
       if (tunnelIndex === -1) {
         throw new NotFoundError(`Tunnel ${name} not found`)
       }
@@ -113,16 +113,17 @@ export class TunnelManager {
       const updatedTunnel = { ...existingTunnel, ...proxy }
 
       // Check remotePort conflict if changed
-      const newRemotePort = (proxy as any).remotePort
-      if (newRemotePort && newRemotePort !== (existingTunnel as any).remotePort) {
-        this.validateRemotePort(config.proxies, newRemotePort, (updatedTunnel as any).type, tunnelIndex)
+      const newRemotePort = proxy.remotePort
+      if (newRemotePort && newRemotePort !== existingTunnel.remotePort) {
+        this.validateRemotePort(config.proxies, newRemotePort, updatedTunnel.type, tunnelIndex)
       }
 
       config.proxies[tunnelIndex] = updatedTunnel
     }
     // Handle legacy format
-    else if ((config as any)[name]) {
-      ;(config as any)[name] = { ...(config as any)[name], ...proxy }
+    else if ((config as Record<string, unknown>)[name]) {
+      const existing = (config as Record<string, unknown>)[name] as ProxyConfig
+      ;(config as Record<string, unknown>)[name] = { ...existing, ...proxy }
     }
     else {
       throw new NotFoundError(`Tunnel ${name} not found`)
@@ -147,7 +148,7 @@ export class TunnelManager {
 
     // Handle [[proxies]] array syntax
     if (Array.isArray(config.proxies)) {
-      const tunnelIndex = config.proxies.findIndex((p: any) => p && p.name === name)
+      const tunnelIndex = config.proxies.findIndex(p => p && p.name === name)
       if (tunnelIndex !== -1) {
         config.proxies.splice(tunnelIndex, 1)
         modified = true
@@ -158,8 +159,8 @@ export class TunnelManager {
       }
     }
     // Handle legacy format
-    else if ((config as any)[name]) {
-      delete (config as any)[name]
+    else if ((config as Record<string, unknown>)[name]) {
+      delete (config as Record<string, unknown>)[name]
       modified = true
       this.log.success('Tunnel removed', { name })
     }
@@ -194,12 +195,12 @@ export class TunnelManager {
     }
 
     // Handle legacy format
-    const proxyKeys = new Set(tunnels.map((t: any) => t.name))
+    const proxyKeys = new Set(tunnels.map(t => t.name))
     for (const [key, value] of Object.entries(config)) {
       if (key === 'proxies')
         continue
       if (typeof value === 'object' && value !== null && 'type' in value && !Array.isArray(value)) {
-        const proxy = { ...value, name: (value as any).name || key } as ProxyConfig
+        const proxy = { ...value, name: ((value as ProxyConfig).name) || key } as ProxyConfig
         if (!proxyKeys.has(proxy.name)) {
           tunnels.push(proxy)
           proxyKeys.add(proxy.name)
@@ -257,19 +258,19 @@ export class TunnelManager {
   /**
    * Validate tunnel uniqueness
    */
-  private validateUniqueness(config: any, proxy: ProxyConfig): void {
-    const proxies = config.proxies || []
+  private validateUniqueness(config: Record<string, unknown>, proxy: ProxyConfig): void {
+    const proxies = (config.proxies as ProxyConfig[]) || []
 
     // Check name uniqueness
-    const existingName = proxies.find((p: any) => p && p.name === proxy.name)
+    const existingName = proxies.find(p => p && p.name === proxy.name)
     if (existingName) {
       this.log.warn('Tunnel name already exists', { name: proxy.name })
       throw new ConfigInvalidError(`Tunnel ${proxy.name} already exists`)
     }
 
     // Check remotePort conflict for types that use it
-    const proxyRemotePort = (proxy as any).remotePort
-    if (proxyRemotePort && this.typeUsesRemotePort(proxy.type)) {
+    const proxyRemotePort = proxy.remotePort
+    if (proxyRemotePort && typeUsesRemotePort(proxy.type)) {
       this.validateRemotePort(proxies, proxyRemotePort, proxy.type)
     }
 
@@ -279,16 +280,16 @@ export class TunnelManager {
   /**
    * Validate remotePort conflict
    */
-  private validateRemotePort(proxies: any[], remotePort: number, type: string, excludeIndex = -1): void {
-    if (!this.typeUsesRemotePort(type)) {
+  private validateRemotePort(proxies: ProxyConfig[], remotePort: number, type: string, excludeIndex = -1): void {
+    if (!typeUsesRemotePort(type)) {
       return
     }
 
-    const inUse = proxies.some((p: any, idx: number) => {
+    const inUse = proxies.some((p, idx) => {
       if (idx === excludeIndex)
         return false
-      const pRemotePort = (p as any).remotePort
-      return p && pRemotePort === remotePort && this.typeUsesRemotePort(p.type)
+      const pRemotePort = p.remotePort
+      return p && pRemotePort === remotePort && typeUsesRemotePort(p.type)
     })
 
     if (inUse) {
@@ -297,19 +298,5 @@ export class TunnelManager {
     }
 
     this.log.debug('Remote port validation passed', { remotePort, type })
-  }
-
-  /**
-   * Check if proxy type uses remotePort
-   */
-  private typeUsesRemotePort(type: string): boolean {
-    return [
-      ProxyType.TCP,
-      ProxyType.UDP,
-      ProxyType.STCP,
-      ProxyType.XTCP,
-      ProxyType.SUDP,
-      ProxyType.TCPMUX
-    ].includes(type as ProxyType)
   }
 }

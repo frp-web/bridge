@@ -10,6 +10,9 @@ import process from 'node:process'
 import { promisify } from 'node:util'
 import { ARCH_MAP, GITHUB_OWNER, GITHUB_REPO, OS_MAP } from '../constants'
 
+// Export proxy utilities
+export * from './proxy-utils'
+
 const exec = promisify(execCallback)
 
 /** Get latest FRP version from GitHub releases */
@@ -62,25 +65,30 @@ export function getDownloadUrl(version: string, platform: string): string {
   return `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/v${version}/frp_${version}_${platform}.${ext}`
 }
 
-/** Download file from URL */
-export async function downloadFile(url: string, dest: string): Promise<void> {
+/** Download file from URL with redirect limit */
+export async function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void> {
+  if (maxRedirects <= 0) {
+    return Promise.reject(new Error('Maximum redirect limit reached'))
+  }
+
   return new Promise((resolve, reject) => {
     const file = createWriteStream(dest)
     const httpLib = url.startsWith('https') ? httpsGet : httpGet
 
     httpLib(url, (response) => {
+      // Handle redirects
       if (response.statusCode === 302 || response.statusCode === 301) {
-        // Handle redirect
         const redirectUrl = response.headers.location
         if (redirectUrl) {
           file.close()
-          downloadFile(redirectUrl, dest).then(resolve).catch(reject)
+          downloadFile(redirectUrl, dest, maxRedirects - 1).then(resolve).catch(reject)
           return
         }
       }
 
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to download: ${response.statusCode}`))
+        file.close()
         return
       }
 
@@ -135,8 +143,8 @@ export function findExistingVersion(workDir: string): string | null {
 
   try {
     const versions = readdirSync(binDir, { withFileTypes: true })
-      .filter((d: any) => d.isDirectory())
-      .map((d: any) => d.name)
+      .filter(d => d.isDirectory())
+      .map(d => d.name)
 
     return versions.length > 0 ? versions[0] : null
   }
@@ -148,11 +156,11 @@ export function findExistingVersion(workDir: string): string | null {
 /**
  * Parse TOML-like config to JSON
  */
-export function parseToml(content: string): Record<string, any> {
+export function parseToml(content: string): Record<string, unknown> {
   const lines = content.split('\n')
-  const result: Record<string, any> = {}
+  const result: Record<string, unknown> = {}
   let currentSection = ''
-  let currentArrayItem: Record<string, any> | null = null
+  let currentArrayItem: Record<string, unknown> | null = null
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -174,7 +182,7 @@ export function parseToml(content: string): Record<string, any> {
 
       // Create new array item
       currentArrayItem = {}
-      ;(result[currentSection] as any[]).push(currentArrayItem)
+      ;(result[currentSection] as Record<string, unknown>[]).push(currentArrayItem)
       continue
     }
 
@@ -193,7 +201,7 @@ export function parseToml(content: string): Record<string, any> {
     const eqIndex = trimmed.indexOf('=')
     if (eqIndex > 0) {
       const key = trimmed.slice(0, eqIndex).trim()
-      let value: any = trimmed.slice(eqIndex + 1).trim()
+      let value: string | number | boolean = trimmed.slice(eqIndex + 1).trim()
 
       // Remove quotes
       if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith('\'') && value.endsWith('\''))) {
@@ -215,7 +223,7 @@ export function parseToml(content: string): Record<string, any> {
         }
         else {
           // Adding to regular section
-          result[currentSection][key] = value
+          ;(result[currentSection] as Record<string, unknown>)[key] = value
         }
       }
       else {
@@ -230,7 +238,7 @@ export function parseToml(content: string): Record<string, any> {
 /**
  * Convert JSON to TOML-like config
  */
-export function toToml(obj: Record<string, any>): string {
+export function toToml(obj: Record<string, unknown>): string {
   const lines: string[] = []
 
   // Process top-level keys first (non-object, non-array values)
@@ -273,17 +281,17 @@ export function toToml(obj: Record<string, any>): string {
  * Omit undefined values from an object
  * Returns a new object with only defined values
  */
-export function omitUndefined<T extends Record<string, any>>(obj: T): T {
+export function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
   const result = {} as T
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      ;(result as any)[key] = value
+      (result as Record<string, unknown>)[key] = value
     }
   }
   return result
 }
 
-function formatTomlValue(key: string, value: any): string {
+function formatTomlValue(key: string, value: unknown): string {
   if (typeof value === 'string') {
     return `${key} = "${value}"`
   }

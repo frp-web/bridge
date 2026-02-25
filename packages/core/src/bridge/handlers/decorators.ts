@@ -4,8 +4,11 @@
  */
 
 import type { CommandHandler, CommandResult } from '../../runtime'
-import { ProxyType } from '@frp-bridge/types'
 import { ModeError, ValidationError } from '../../errors'
+import { typeUsesRemotePort } from '../../utils'
+
+// Error code type for type-safe error handling
+export type ErrorCode = 'VALIDATION_ERROR' | 'MODE_ERROR' | 'RUNTIME_ERROR' | 'UNKNOWN_ERROR' | 'RPC_NOT_AVAILABLE' | 'PORT_CONFLICT'
 
 /**
  * 验证结果
@@ -173,7 +176,7 @@ function handleError(error: unknown): CommandResult {
     return {
       status: 'failed',
       error: {
-        code: error.code as any,
+        code: error.code as ErrorCode,
         message: error.message
       }
     }
@@ -183,7 +186,7 @@ function handleError(error: unknown): CommandResult {
     return {
       status: 'failed',
       error: {
-        code: error.code as any,
+        code: error.code as ErrorCode,
         message: error.message
       }
     }
@@ -193,7 +196,7 @@ function handleError(error: unknown): CommandResult {
     return {
       status: 'failed',
       error: {
-        code: 'RUNTIME_ERROR' as any,
+        code: 'RUNTIME_ERROR',
         message: error.message
       }
     }
@@ -202,7 +205,7 @@ function handleError(error: unknown): CommandResult {
   return {
     status: 'failed',
     error: {
-      code: 'UNKNOWN_ERROR' as any,
+      code: 'UNKNOWN_ERROR',
       message: 'An unknown error occurred'
     }
   }
@@ -237,7 +240,7 @@ export const Validators = {
    * 验证数字字段
    */
   number: <T>(field: keyof T, min?: number, max?: number): Validator<T> => (payload) => {
-    const value = (payload as any)[field]
+    const value = (payload as Record<string, unknown>)[String(field)] as number
     if (typeof value !== 'number') {
       return { valid: false, error: `${String(field)} must be a number` }
     }
@@ -265,20 +268,6 @@ export const Validators = {
 }
 
 /**
- * 检查代理类型是否使用 remotePort
- */
-function typeUsesRemotePort(type: string): boolean {
-  return [
-    ProxyType.TCP,
-    ProxyType.UDP,
-    ProxyType.STCP,
-    ProxyType.XTCP,
-    ProxyType.SUDP,
-    ProxyType.TCPMUX
-  ].includes(type as ProxyType)
-}
-
-/**
  * 模式路由装饰器
  * Server 模式：通过 RPC 转发到节点
  * Client 模式：本地执行
@@ -286,7 +275,7 @@ function typeUsesRemotePort(type: string): boolean {
 export function withModeRouting<T extends { nodeId?: string }>(
   localHandler: (payload: T, deps: CommandDependencies) => Promise<CommandResult>,
   rpcMethod: string,
-  transformPayload?: (payload: T) => any
+  transformPayload?: (payload: T) => Record<string, unknown>
 ): (handler: CommandHandler<T>, deps: CommandDependencies) => CommandHandler<T> {
   return (_handler, deps) => {
     return async (command, _ctx) => {
@@ -343,13 +332,18 @@ export function withModeRouting<T extends { nodeId?: string }>(
  * 端口冲突检查装饰器
  * 检查远程端口是否已在所有节点上被使用
  */
-export function withPortConflictCheck<T extends { proxy?: { remotePort?: number, type?: string }, nodeId?: string }>(
-  handler: CommandHandler<T>,
-  deps: CommandDependencies
-): CommandHandler<T> {
+export function withPortConflictCheck<
+  T extends {
+    proxy?: {
+      remotePort?: number
+      type?: string
+    }
+    nodeId?: string
+  }
+>(handler: CommandHandler<T>, deps: CommandDependencies): CommandHandler<T> {
   return async (command, ctx) => {
     const payload = command.payload as T
-    const proxy = payload.proxy as any
+    const proxy = payload.proxy
 
     if (proxy?.remotePort && proxy?.type && typeUsesRemotePort(proxy.type)) {
       const portCheck = deps.nodeManager?.isRemotePortInUse(proxy.remotePort, payload.nodeId)
