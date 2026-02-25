@@ -1,11 +1,8 @@
 import type { NodeHeartbeatPayload, NodeRegisterPayload, ProxyConfig } from '@frp-bridge/types'
-import type { NodeManager } from '../../node'
-import type { FrpProcessManager } from '../../process'
-import type { RpcServer } from '../../rpc'
 import type { NodeDeletePayload, TunnelAddPayload, TunnelDeletePayload } from '../../rpc/message-types'
 import type { CommandHandler, CommandHandlerContext, CommandResult, RuntimeEvent } from '../../runtime'
 import type { ConfigApplyPayload, ConfigApplyRawPayload, ProxyAddPayload, ProxyRemovePayload, ProxyUpdatePayload } from '../types'
-import type { Validator } from './decorators'
+import type { CommandDependencies, Validator } from './decorators'
 import { omitUndefined } from '../../utils'
 import {
   compose,
@@ -19,20 +16,10 @@ import {
 } from './decorators'
 
 /**
- * External dependencies needed by command handlers
- */
-export interface CommandDependencies {
-  process: FrpProcessManager
-  nodeManager?: NodeManager
-  rpcServer?: RpcServer
-  mode: 'client' | 'server'
-}
-
-/**
  * Helper to run config mutations with optional restart
  */
 export async function runConfigMutation(
-  process: FrpProcessManager,
+  process: CommandDependencies['process'],
   mutate: () => Promise<void> | void,
   restart: boolean | undefined,
   ctx: CommandHandlerContext

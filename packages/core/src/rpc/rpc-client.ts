@@ -155,10 +155,10 @@ export class RpcClient {
         // Send event response (matching document spec)
         const event: EventRpcMessageEvent = {
           type: 'event',
-          action: `${command.action}ed` as any, // Convert to past tense: tunnel.add -> tunnel.added
+          action: `${command.action}ed` as EventRpcMessageEvent['action'], // Convert to past tense: tunnel.add -> tunnel.added
           payload: {
             success: true,
-            result: result as any
+            result
           },
           id: command.id
         }
@@ -168,7 +168,7 @@ export class RpcClient {
         // Fallback: send error response if no handler
         const event: EventRpcMessageEvent = {
           type: 'event',
-          action: `${command.action}ed` as any,
+          action: `${command.action}ed` as EventRpcMessageEvent['action'],
           payload: {
             success: false,
             error: 'No command handler registered'
@@ -182,7 +182,7 @@ export class RpcClient {
       // Send error event response
       const event: EventRpcMessageEvent = {
         type: 'event',
-        action: `${command.action}ed` as any,
+        action: `${command.action}ed` as EventRpcMessageEvent['action'],
         payload: {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error'
@@ -207,7 +207,7 @@ export class RpcClient {
     }
   }
 
-  private send(message: any): void {
+  private send(message: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message))
     }

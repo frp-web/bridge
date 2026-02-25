@@ -9,6 +9,9 @@ import { writeFileSync } from 'node:fs'
 import { stringify as toToml } from './toml'
 import { ensureDir } from './utils'
 
+// Type for TOML-compatible values
+type TomlValue = string | number | boolean | unknown[] | { [key: string]: unknown }
+
 /**
  * 预设配置接口
  */
@@ -70,7 +73,7 @@ export function mergeConfigs(
   }
 
   // 1. 添加基础配置
-  const baseConfig: Record<string, any> = {}
+  const baseConfig: Record<string, TomlValue> = {}
 
   if (type === 'frps') {
     const frpsConfig = config as FrpsPresetConfig
@@ -87,7 +90,7 @@ export function mergeConfigs(
 
     // Dashboard 配置
     if (frpsConfig.dashboardPort || frpsConfig.dashboardUser || frpsConfig.dashboardPassword) {
-      const webServer: Record<string, any> = {}
+      const webServer: Record<string, string> = {}
       if (frpsConfig.dashboardPort)
         webServer.addr = `0.0.0.0:${frpsConfig.dashboardPort}`
       if (frpsConfig.dashboardUser)
@@ -242,7 +245,7 @@ function tunnelsToToml(tunnels: ProxyConfig[]): string {
 /**
  * 将对象转换为 TOML 格式
  */
-function objectToToml(obj: Record<string, any>, sectionPrefix = ''): string {
+function objectToToml(obj: Record<string, TomlValue>, sectionPrefix = ''): string {
   const lines: string[] = []
 
   for (const [key, value] of Object.entries(obj)) {
@@ -276,7 +279,7 @@ function objectToToml(obj: Record<string, any>, sectionPrefix = ''): string {
 /**
  * 将配置对象转换为 TOML 格式
  */
-export function configToToml(config: Record<string, any>): string {
+export function configToToml(config: Record<string, unknown>): string {
   return toToml(config)
 }
 
