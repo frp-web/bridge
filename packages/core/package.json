@@ -28,6 +28,7 @@
     "build": "unbuild"
   },
   "dependencies": {
+    "@frp-bridge/shared": "workspace:*",
     "@frp-bridge/types": "workspace:*",
     "axios": "^1.13.2",
     "consola": "^3.4.2",

@@ -1,9 +1,8 @@
 import type { NodeInfo, RpcRequest, RpcResponse } from '@frp-bridge/types'
 import type { IncomingMessage } from 'node:http'
-import type { RuntimeLogger } from '../runtime'
 import type { EventRpcMessage, RegisterMessage } from './message-types'
 import { randomUUID } from 'node:crypto'
-import { createLogger } from '@frp-bridge/shared'
+import { rpcServerLogger } from '@frp-bridge/shared'
 import { WebSocket, WebSocketServer } from 'ws'
 import { isEventMessage, isPongMessage, isRegisterMessage, isRpcResponse } from './message-types'
 import { safeParse } from './utils'
@@ -35,7 +34,6 @@ export interface RpcServerOptions {
   onRegister?: (nodeId: string, payload: NodeInfo) => void | Promise<void>
   onEvent?: (nodeId: string, event: EventRpcMessage) => void | Promise<void>
   commandTimeout?: number // Default timeout for command tracking
-  logger?: Partial<RuntimeLogger>
 }
 
 export class RpcServer {
@@ -48,7 +46,7 @@ export class RpcServer {
   private cleanupTimer?: NodeJS.Timeout
   private server?: WebSocketServer
   private readonly defaultCommandTimeout: number
-  private readonly log = createLogger('RpcServer')
+  private readonly log = rpcServerLogger
 
   constructor(private readonly options: RpcServerOptions) {
     this.defaultCommandTimeout = options.commandTimeout ?? 60000

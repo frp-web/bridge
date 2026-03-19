@@ -4,6 +4,7 @@
  */
 
 import type { RpcRequest, RpcResponse } from './message-types'
+import { rpcMiddlewareLogger } from '@frp-bridge/shared'
 
 /**
  * 中间件上下文
@@ -33,27 +34,21 @@ export interface MiddlewareOptions {
 /**
  * 日志中间件
  */
-export function loggingMiddleware(
-  logger?: {
-    info?: (msg: string, data?: unknown) => void
-    warn?: (msg: string, data?: unknown) => void
-    error?: (msg: string, data?: unknown) => void
-  }
-): MiddlewareFn {
+export function loggingMiddleware(): MiddlewareFn {
   return async (context, next) => {
     const { request } = context
-    logger?.info?.('RPC request', { method: request.method, params: request.params })
+    rpcMiddlewareLogger.info('RPC request', { method: request.method, params: request.params })
 
     try {
       await next()
-      logger?.info?.('RPC response', {
+      rpcMiddlewareLogger.info('RPC response', {
         method: request.method,
         duration: Date.now() - context.startTime,
         status: context.response.status
       })
     }
     catch (error) {
-      logger?.error?.('RPC error', {
+      rpcMiddlewareLogger.error('RPC error', {
         method: request.method,
         error: error instanceof Error ? error.message : 'Unknown error'
       })
@@ -116,9 +111,7 @@ export function timeoutMiddleware(timeoutMs: number): MiddlewareFn {
 /**
  * 错误处理中间件
  */
-export function errorHandlerMiddleware(
-  logger?: { error?: (msg: string, data?: unknown) => void }
-): MiddlewareFn {
+export function errorHandlerMiddleware(): MiddlewareFn {
   return async (context, next) => {
     try {
       await next()
@@ -129,7 +122,7 @@ export function errorHandlerMiddleware(
         code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
         message: error instanceof Error ? error.message : 'Unknown error'
       }
-      logger?.error?.('RPC middleware error', error)
+      rpcMiddlewareLogger.error('RPC middleware error', error)
     }
   }
 }

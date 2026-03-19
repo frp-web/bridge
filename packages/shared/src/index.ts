@@ -10,12 +10,18 @@ export async function loadingFunction<T>(message: string, fn: () => Promise<T>):
 }
 
 export {
+  binaryManagerLogger,
+  clientCollectorLogger,
+  configMergerLogger,
+  configurationStoreLogger,
   coreLogger,
   nodeControllerLogger,
   nodeManagerLogger,
+  presetConfigLogger,
   processControllerLogger,
   processLogger,
   rpcClientLogger,
+  rpcMiddlewareLogger,
   rpcServerLogger,
   runtimeLogger,
   tunnelManagerLogger

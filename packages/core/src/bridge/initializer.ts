@@ -89,7 +89,7 @@ export class FrpBridgeInitializer {
     const process = this.createProcessManager(rootWorkDir, processDir, loggers.processLogger)
     const runtimeContext = this.createRuntimeContext(runtimeDir, loggers.runtimeLogger)
 
-    const nodeManager = this.createNodeManager(runtimeContext, runtimeDir, loggers.runtimeLogger)
+    const nodeManager = this.createNodeManager(runtimeContext, runtimeDir)
     const clientCollector = this.createClientCollector()
     const { rpcServer, rpcClient } = this.createRpcComponents()
 
@@ -162,7 +162,7 @@ export class FrpBridgeInitializer {
   /**
    * Create node manager (server mode only)
    */
-  private createNodeManager(runtimeContext: RuntimeContext, runtimeDir: string, logger: RuntimeLogger): NodeManager | undefined {
+  private createNodeManager(runtimeContext: RuntimeContext, runtimeDir: string): NodeManager | undefined {
     if (this.config.mode !== 'server') {
       return undefined
     }
@@ -172,8 +172,7 @@ export class FrpBridgeInitializer {
     const nodeStorage = new FileNodeStorage(nodeStorageDir)
 
     return new NodeManager(runtimeContext, {
-      heartbeatTimeout: 90000, // 90 seconds
-      logger
+      heartbeatTimeout: 90000 // 90 seconds
     }, nodeStorage)
   }
 
@@ -186,8 +185,7 @@ export class FrpBridgeInitializer {
     }
 
     return new ClientNodeCollector({
-      heartbeatInterval: 30000, // 30 seconds
-      logger: consola.withTag('ClientNodeCollector')
+      heartbeatInterval: 30000 // 30 seconds
     })
   }
 
@@ -206,8 +204,7 @@ export class FrpBridgeInitializer {
         authorize: rpcOptions.serverAuthorize,
         onRegister: rpcOptions.serverOnRegister,
         onEvent: rpcOptions.serverOnEvent,
-        commandTimeout: rpcOptions.serverCommandTimeout,
-        logger: consola.withTag('RpcServer')
+        commandTimeout: rpcOptions.serverCommandTimeout
       })
     }
 
@@ -219,8 +216,7 @@ export class FrpBridgeInitializer {
         getRegisterPayload: rpcOptions.getRegisterPayload ?? (async () => {
           throw new Error('rpc getRegisterPayload is required in client mode')
         }),
-        handleRequest: rpcOptions.handleRequest ?? (async () => undefined),
-        logger: consola.withTag('RpcClient')
+        handleRequest: rpcOptions.handleRequest ?? (async () => undefined)
       })
     }
 

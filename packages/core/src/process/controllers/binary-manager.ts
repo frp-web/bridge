@@ -3,9 +3,8 @@
  * 负责二进制文件的生命周期管理
  */
 
-import type { RuntimeLogger } from '../../runtime'
 import { existsSync } from 'node:fs'
-import { consola } from 'consola'
+import { binaryManagerLogger } from '@frp-bridge/shared'
 import { join } from 'pathe'
 import { BINARY_NAMES } from '../../constants'
 import { BinaryNotFoundError } from '../../errors'
@@ -17,8 +16,6 @@ export interface BinaryManagerOptions {
   workDir: string
   /** Mode: client or server */
   mode: 'client' | 'server'
-  /** Optional logger */
-  logger?: RuntimeLogger
 }
 
 /**
@@ -27,7 +24,7 @@ export interface BinaryManagerOptions {
 export class BinaryManager {
   private readonly workDir: string
   private readonly mode: 'client' | 'server'
-  private readonly logger: RuntimeLogger
+  private readonly log = binaryManagerLogger
   private readonly platformStrategy = PlatformStrategyFactory.create()
   private version: string | null = null
   private binaryPath: string = ''
@@ -35,7 +32,6 @@ export class BinaryManager {
   constructor(options: BinaryManagerOptions) {
     this.workDir = options.workDir
     this.mode = options.mode
-    this.logger = options.logger ?? consola.withTag('BinaryManager')
   }
 
   /**

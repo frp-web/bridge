@@ -5,18 +5,13 @@
 
 import type { NodeHeartbeatPayload, NodeRegisterPayload } from '@frp-bridge/types'
 import { cpus, hostname, platform, release, totalmem } from 'node:os'
+import { clientCollectorLogger } from '@frp-bridge/shared'
 
 export interface ClientCollectorOptions {
   /** Node ID (set by server after registration) */
   nodeId?: string
   /** Heartbeat interval in milliseconds (default: 30000) */
   heartbeatInterval?: number
-  /** Logger instance */
-  logger?: {
-    debug?: (msg: string, data?: unknown) => void
-    info?: (msg: string, data?: unknown) => void
-    error?: (msg: string, error?: unknown) => void
-  }
 }
 
 /**
@@ -26,13 +21,12 @@ export interface ClientCollectorOptions {
 export class ClientNodeCollector {
   private nodeId?: string
   private heartbeatInterval: number
-  private logger: ClientCollectorOptions['logger']
+  private readonly log = clientCollectorLogger
   private heartbeatTimer?: NodeJS.Timeout
 
   constructor(options: ClientCollectorOptions = {}) {
     this.nodeId = options.nodeId
     this.heartbeatInterval = options.heartbeatInterval ?? 30000
-    this.logger = options.logger
   }
 
   /** Set node ID after server registration */
@@ -84,7 +78,7 @@ export class ClientNodeCollector {
     interval?: number
   ): void {
     if (this.heartbeatTimer) {
-      this.logger?.debug?.('Heartbeat already running')
+      this.log.debug?.('Heartbeat already running')
       return
     }
 
@@ -96,7 +90,7 @@ export class ClientNodeCollector {
       callback(payload)
     }
     catch (error) {
-      this.logger?.error?.('Failed to collect initial heartbeat', error)
+      this.log.error?.('Failed to collect initial heartbeat', error)
     }
 
     // Schedule periodic heartbeats
@@ -106,11 +100,11 @@ export class ClientNodeCollector {
         callback(payload)
       }
       catch (error) {
-        this.logger?.error?.('Failed to collect heartbeat', error)
+        this.log.error?.('Failed to collect heartbeat', error)
       }
     }, heartbeatInterval)
 
-    this.logger?.info?.(`Heartbeat started with interval ${heartbeatInterval}ms`)
+    this.log.info?.(`Heartbeat started with interval ${heartbeatInterval}ms`)
   }
 
   /** Stop periodic heartbeat collection */
@@ -118,7 +112,7 @@ export class ClientNodeCollector {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer)
       this.heartbeatTimer = undefined
-      this.logger?.info?.('Heartbeat stopped')
+      this.log.info?.('Heartbeat stopped')
     }
   }
 

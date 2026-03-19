@@ -4,9 +4,8 @@
  */
 
 import type { ClientConfig, ServerConfig } from '@frp-bridge/types'
-import type { RuntimeLogger } from '../../runtime'
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { consola } from 'consola'
+import { configurationStoreLogger } from '@frp-bridge/shared'
 import { ConfigInvalidError, ConfigNotFoundError } from '../../errors'
 import { parse as parseToml, stringify as toToml } from '../../toml'
 
@@ -29,8 +28,6 @@ export interface ConfigChangeCallback {
 export type FrpConfig = ClientConfig | ServerConfig
 
 export interface ConfigurationStoreOptions {
-  /** Optional logger */
-  logger?: RuntimeLogger
   /** Cache TTL in milliseconds (default: 5000) */
   cacheTTL?: number
 }
@@ -39,12 +36,11 @@ export interface ConfigurationStoreOptions {
  * ConfigurationStore 管理配置文件的读写
  */
 export class ConfigurationStore {
-  private readonly logger: RuntimeLogger
+  private readonly log = configurationStoreLogger
   private readonly cache: Map<string, CachedConfig> = new Map()
   private readonly cacheTTL: number
 
   constructor(options: ConfigurationStoreOptions = {}) {
-    this.logger = options.logger ?? consola.withTag('ConfigurationStore')
     this.cacheTTL = options.cacheTTL ?? 5000
   }
 

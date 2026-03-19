@@ -1,8 +1,7 @@
 import type { NodeInfo, RpcRequest } from '@frp-bridge/types'
-import type { RuntimeLogger } from '../runtime'
 import type { CommandRpcMessage, EventRpcMessageEvent } from './message-types'
 import type { ReconnectStrategy } from './reconnect-strategy'
-import { createLogger } from '@frp-bridge/shared'
+import { rpcClientLogger } from '@frp-bridge/shared'
 import { WebSocket } from 'ws'
 import { isCommandMessage, isPingMessage, isRpcRequest } from './message-types'
 import { ExponentialBackoffStrategy } from './reconnect-strategy'
@@ -15,7 +14,6 @@ export interface RpcClientOptions {
   handleRequest: (req: RpcRequest) => Promise<unknown>
   handleCommand?: (command: CommandRpcMessage) => Promise<unknown>
   reconnectStrategy?: ReconnectStrategy
-  logger?: Partial<RuntimeLogger>
 }
 
 export class RpcClient {
@@ -24,7 +22,7 @@ export class RpcClient {
   private reconnectAttempt = 0
   private readonly reconnectStrategy: ReconnectStrategy
   private connectionState: 'connecting' | 'connected' | 'disconnected' = 'disconnected'
-  private readonly log = createLogger('RpcClient')
+  private readonly log = rpcClientLogger
 
   constructor(private readonly options: RpcClientOptions) {
     this.reconnectStrategy = options.reconnectStrategy ?? new ExponentialBackoffStrategy()

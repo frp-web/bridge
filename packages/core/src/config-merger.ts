@@ -4,10 +4,9 @@
  */
 
 import type { ProxyConfig } from '@frp-bridge/types'
-import type { RuntimeLogger } from './runtime'
 import { Buffer } from 'node:buffer'
 import { closeSync, fsyncSync, openSync, writeSync } from 'node:fs'
-
+import { configMergerLogger } from '@frp-bridge/shared'
 import { stringify as toToml } from './toml'
 import { ensureDir } from './utils'
 
@@ -65,14 +64,13 @@ export const DEFAULT_PRESET_CONFIG: PresetConfig = {
 export function mergeConfigs(
   presetConfig: PresetConfig,
   userConfig: string,
-  type: 'frps' | 'frpc',
-  logger?: RuntimeLogger
+  type: 'frps' | 'frpc'
 ): string {
   const parts: string[] = []
   const config = type === 'frps' ? presetConfig.frps : presetConfig.frpc
 
   if (!config) {
-    logger?.warn(`No config found for type ${type}, returning userConfig only`)
+    configMergerLogger.warn(`No config found for type ${type}, returning userConfig only`)
     return userConfig
   }
 
@@ -104,7 +102,7 @@ export function mergeConfigs(
       if (frpsConfig.dashboardPassword)
         webServer.password = frpsConfig.dashboardPassword
       baseConfig.webServer = webServer
-      logger?.info('webServer config added:', { webServer })
+      configMergerLogger.info('webServer config added:', { webServer })
     }
 
     if (frpsConfig.authToken)
@@ -145,14 +143,13 @@ export function saveFrpConfigFile(
   configPath: string,
   tunnels: ProxyConfig[],
   presetConfig: PresetConfig,
-  type: 'frps' | 'frpc',
-  logger?: RuntimeLogger
+  type: 'frps' | 'frpc'
 ): void {
   // 1. 将 tunnels 转换为 TOML 格式
   const userConfig = tunnelsToToml(tunnels)
 
   // 2. 合并预设配置和用户配置
-  const finalConfig = mergeConfigs(presetConfig, userConfig, type, logger)
+  const finalConfig = mergeConfigs(presetConfig, userConfig, type)
 
   // 3. 确保目录存在
   const targetDir = configPath.includes('/') || configPath.includes('\\')

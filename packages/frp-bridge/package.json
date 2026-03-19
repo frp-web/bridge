@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@frp-bridge/core": "workspace:*",
+    "@frp-bridge/shared": "workspace:*",
     "@frp-bridge/types": "workspace:*"
   }
 }

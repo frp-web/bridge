@@ -13,14 +13,13 @@ import type {
   ProxyConfig,
   TunnelSyncPayload
 } from '@frp-bridge/types'
-import type { RuntimeContext, RuntimeLogger } from '../runtime'
+import type { RuntimeContext } from '../runtime'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { createLogger } from '@frp-bridge/shared'
+import { nodeManagerLogger } from '@frp-bridge/shared'
 
 export interface NodeManagerOptions {
   heartbeatTimeout?: number // ms, default 90s
-  logger?: Partial<RuntimeLogger>
 }
 
 export interface NodeStorage {
@@ -47,7 +46,7 @@ export class NodeManager extends EventEmitter {
   private tunnelRegistry = new Map<string, ProxyConfig[]>() // nodeId -> tunnels
   private storage?: NodeStorage
   private heartbeatTimeout: number
-  private readonly log = createLogger('NodeMgr')
+  private readonly log = nodeManagerLogger
 
   constructor(
     private context: RuntimeContext,

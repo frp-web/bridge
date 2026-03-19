@@ -4,12 +4,9 @@
  */
 
 import type { PresetConfig } from '../../config-merger'
-import type { RuntimeLogger } from '../../runtime'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-
-import { consola } from 'consola'
+import { presetConfigLogger } from '@frp-bridge/shared'
 import { join } from 'pathe'
-
 import { DEFAULT_PRESET_CONFIG } from '../../config-merger'
 import { ensureDir } from '../../utils'
 
@@ -18,19 +15,16 @@ export interface PresetConfigManagerOptions {
   workDir: string
   /** Config directory (defaults to workDir/config) */
   configDir?: string
-  /** Optional logger */
-  logger?: RuntimeLogger
 }
 
 /**
  * PresetConfigManager 管理预设配置的读写
  */
 export class PresetConfigManager {
-  private readonly logger: RuntimeLogger
+  private readonly log = presetConfigLogger
   private readonly configDir: string
 
   constructor(options: PresetConfigManagerOptions) {
-    this.logger = options.logger ?? consola.withTag('PresetConfigManager')
     this.configDir = options.configDir || join(options.workDir, 'config')
   }
 
@@ -49,7 +43,7 @@ export class PresetConfigManager {
 
     if (!existsSync(presetPath)) {
       // 返回默认配置
-      this.logger.info(`Preset config not found at ${presetPath}, using defaults for ${type}`)
+      this.log.info(`Preset config not found at ${presetPath}, using defaults for ${type}`)
       return {
         [type]: DEFAULT_PRESET_CONFIG[type] || {}
       }
@@ -61,7 +55,7 @@ export class PresetConfigManager {
       return { [type]: config }
     }
     catch (error) {
-      this.logger.error(`Failed to load preset config for ${type}:`, { error })
+      this.log.error(`Failed to load preset config for ${type}:`, { error })
       return {
         [type]: DEFAULT_PRESET_CONFIG[type] || {}
       }
@@ -78,7 +72,7 @@ export class PresetConfigManager {
     ensureDir(this.configDir)
 
     writeFileSync(presetPath, JSON.stringify(config, null, 2), 'utf-8')
-    this.logger.info(`Preset config saved for ${type}`)
+    this.log.info(`Preset config saved for ${type}`)
   }
 
   /**

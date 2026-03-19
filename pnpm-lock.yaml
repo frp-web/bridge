@@ -69,6 +69,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@frp-bridge/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@frp-bridge/types':
         specifier: workspace:*
         version: link:../types
@@ -106,6 +109,9 @@ importers:
       '@frp-bridge/core':
         specifier: workspace:*
         version: link:../core
+      '@frp-bridge/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@frp-bridge/types':
         specifier: workspace:*
         version: link:../types

@@ -383,7 +383,7 @@ export class FrpProcessManager extends EventEmitter {
     }
 
     // 3. 使用 saveFrpConfigFile 生成配置文件
-    saveFrpConfigFile(this.configPath, tunnels, presetConfig, type, this.logger)
+    saveFrpConfigFile(this.configPath, tunnels, presetConfig, type)
 
     this.logger.info(`Generated FRP config: ${this.configPath}`)
   }
