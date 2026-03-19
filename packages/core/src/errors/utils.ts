@@ -47,7 +47,7 @@ export function isErrorCode(error: unknown, code: string): boolean {
  */
 export function isErrorType<T extends FrpBridgeErrorBase>(
   error: unknown,
-  ErrorClass: new (...args: any[]) => T
+  ErrorClass: new (...args: unknown[]) => T
 ): error is T {
   return error instanceof ErrorClass
 }

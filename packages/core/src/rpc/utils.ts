@@ -20,7 +20,7 @@ export function normalizeWebSocketData(data: WebSocket.RawData): string {
 
 export function safeParse(
   data: WebSocket.RawData
-): any | undefined {
+): unknown | undefined {
   try {
     const text = normalizeWebSocketData(data)
     return JSON.parse(text)
