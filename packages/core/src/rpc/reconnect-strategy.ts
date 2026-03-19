@@ -3,6 +3,8 @@
  * 提供可配置的重连机制，包括指数退避
  */
 
+import { rpcClientLogger } from '@frp-bridge/shared'
+
 /**
  * 重连策略接口
  */
@@ -30,8 +32,7 @@ export class ExponentialBackoffStrategy implements ReconnectStrategy {
   constructor(
     private maxAttempts = 10,
     private baseDelay = 1000,
-    private maxDelay = 30000,
-    private logger?: { error?: (msg: string, data?: unknown) => void }
+    private maxDelay = 30000
   ) {}
 
   shouldReconnect(attempt: number): boolean {
@@ -50,8 +51,7 @@ export class ExponentialBackoffStrategy implements ReconnectStrategy {
 
   onMaxAttemptsReached(): void {
     const msg = `Max reconnection attempts reached (${this.maxAttempts})`
-    this.logger?.error?.(msg)
-    console.error(`[RpcClient] ${msg}`)
+    rpcClientLogger.error(msg)
   }
 }
 
@@ -61,8 +61,7 @@ export class ExponentialBackoffStrategy implements ReconnectStrategy {
 export class FixedIntervalStrategy implements ReconnectStrategy {
   constructor(
     private maxAttempts = 10,
-    private interval = 5000,
-    private logger?: { error?: (msg: string, data?: unknown) => void }
+    private interval = 5000
   ) {}
 
   shouldReconnect(attempt: number): boolean {
@@ -75,8 +74,7 @@ export class FixedIntervalStrategy implements ReconnectStrategy {
 
   onMaxAttemptsReached(): void {
     const msg = `Max reconnection attempts reached (${this.maxAttempts})`
-    this.logger?.error?.(msg)
-    console.error(`[RpcClient] ${msg}`)
+    rpcClientLogger.error(msg)
   }
 }
 
@@ -88,8 +86,7 @@ export class LinearBackoffStrategy implements ReconnectStrategy {
     private maxAttempts = 10,
     private baseDelay = 1000,
     private increment = 1000,
-    private maxDelay = 30000,
-    private logger?: { error?: (msg: string, data?: unknown) => void }
+    private maxDelay = 30000
   ) {}
 
   shouldReconnect(attempt: number): boolean {
@@ -106,8 +103,7 @@ export class LinearBackoffStrategy implements ReconnectStrategy {
 
   onMaxAttemptsReached(): void {
     const msg = `Max reconnection attempts reached (${this.maxAttempts})`
-    this.logger?.error?.(msg)
-    console.error(`[RpcClient] ${msg}`)
+    rpcClientLogger.error(msg)
   }
 }
 

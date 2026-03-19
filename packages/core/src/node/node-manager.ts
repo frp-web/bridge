@@ -403,7 +403,7 @@ export class NodeManager extends EventEmitter {
       }
 
       for (const tunnel of tunnels) {
-        const tunnelRemotePort = (tunnel as any).remotePort
+        const tunnelRemotePort = (tunnel as unknown as Record<string, unknown>).remotePort as number | undefined
         if (tunnelRemotePort && tunnelRemotePort === remotePort) {
           return {
             inUse: true,

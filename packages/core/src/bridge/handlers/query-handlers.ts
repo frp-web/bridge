@@ -85,7 +85,7 @@ export function createNodeGetQuery(deps: QueryDependencies): QueryHandler {
       }
     }
 
-    const nodeId = (query.payload as any)?.nodeId
+    const nodeId = (query.payload as Record<string, unknown> | undefined)?.nodeId as string | undefined
     if (!nodeId) {
       return {
         result: null,
