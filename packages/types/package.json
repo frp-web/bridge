@@ -1,7 +1,7 @@
 {
   "name": "@frp-bridge/types",
   "type": "module",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Frp bridge type definitions",
   "license": "MIT",
   "homepage": "https://github.com/frp-web/bridge#readme",
