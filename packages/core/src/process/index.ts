@@ -46,6 +46,8 @@ export interface FrpProcessManagerOptions {
   workDir?: string
   /** Path to config file (overrides default) */
   configPath?: string
+  /** Config directory for preset configs (overrides workDir/config) */
+  configDir?: string
   /** FRP version (defaults to latest) */
   version?: string
   /** Mode: client or server */
@@ -85,6 +87,7 @@ export class FrpProcessManager extends EventEmitter {
   private readonly specifiedVersion?: string
   private readonly logger: RuntimeLogger
   private readonly configPath: string
+  private readonly configDir: string
 
   // Component instances
   private readonly processController: ProcessController
@@ -105,6 +108,7 @@ export class FrpProcessManager extends EventEmitter {
     this.specifiedVersion = options.version
     this.workDir = options.workDir || join(homedir(), '.frp-bridge')
     this.configPath = options.configPath || join(this.workDir, `frp${this.mode === 'client' ? 'c' : 's'}.toml`)
+    this.configDir = options.configDir || join(this.workDir, 'config')
     this.logger = options.logger ?? consola.withTag('FrpProcessManager')
 
     // Initialize components
@@ -117,6 +121,7 @@ export class FrpProcessManager extends EventEmitter {
     })
     this.presetConfigManager = new PresetConfigManager({
       workDir: this.workDir,
+      configDir: this.configDir,
       logger: this.logger
     })
 
@@ -378,7 +383,7 @@ export class FrpProcessManager extends EventEmitter {
     }
 
     // 3. 使用 saveFrpConfigFile 生成配置文件
-    saveFrpConfigFile(this.configPath, tunnels, presetConfig, type)
+    saveFrpConfigFile(this.configPath, tunnels, presetConfig, type, this.logger)
 
     this.logger.info(`Generated FRP config: ${this.configPath}`)
   }

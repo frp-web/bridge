@@ -410,16 +410,26 @@ export function createPresetConfigGetCommand(deps: CommandDependencies): Command
  * Preset config set handler
  */
 export function createPresetConfigSetCommand(deps: CommandDependencies): CommandHandler<Record<string, any>> {
-  return withErrorHandling(async (command) => {
+  return withErrorHandling(async (command, ctx) => {
     const config = command.payload?.config
     if (!config || typeof config !== 'object') {
       throw new Error('preset.set requires payload.config')
     }
 
+    const restart = command.payload?.restart ?? true
+
     deps.process.savePresetConfig(config)
 
     // Regenerate config file
     await deps.process.generateConfig(true)
+
+    // Restart process if it's running and restart is not false
+    if (restart && deps.process.isRunning()) {
+      await deps.process.stop()
+      await deps.process.start()
+    }
+
+    ctx.requestVersionBump()
 
     return {
       status: 'success',

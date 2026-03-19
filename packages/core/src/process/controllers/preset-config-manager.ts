@@ -49,7 +49,7 @@ export class PresetConfigManager {
 
     if (!existsSync(presetPath)) {
       // 返回默认配置
-      this.logger.info(`Preset config not found, using defaults for ${type}`)
+      this.logger.info(`Preset config not found at ${presetPath}, using defaults for ${type}`)
       return {
         [type]: DEFAULT_PRESET_CONFIG[type] || {}
       }
