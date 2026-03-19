@@ -4,8 +4,7 @@
  */
 
 import type { ProxyConfig } from '@frp-bridge/types'
-import { Buffer } from 'node:buffer'
-import { closeSync, fsyncSync, openSync, writeSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { configMergerLogger } from '@frp-bridge/shared'
 import { stringify as toToml } from './toml'
 import { ensureDir } from './utils'
@@ -139,12 +138,12 @@ export function mergeConfigs(
 /**
  * 从 tunnels 数组生成并保存 FRP 配置文件
  */
-export function saveFrpConfigFile(
+export async function saveFrpConfigFile(
   configPath: string,
   tunnels: ProxyConfig[],
   presetConfig: PresetConfig,
   type: 'frps' | 'frpc'
-): void {
+): Promise<void> {
   // 1. 将 tunnels 转换为 TOML 格式
   const userConfig = tunnelsToToml(tunnels)
 
@@ -157,17 +156,8 @@ export function saveFrpConfigFile(
     : '.'
   ensureDir(targetDir)
 
-  // 4. 写入配置文件并同步到磁盘
-  const buffer = Buffer.from(finalConfig, 'utf-8')
-  const fd = openSync(configPath, 'w')
-  try {
-    writeSync(fd, buffer, 0, buffer.length, 0)
-    // 同步到磁盘
-    fsyncSync(fd)
-  }
-  finally {
-    closeSync(fd)
-  }
+  // 4. 异步写入配置文件
+  await writeFile(configPath, finalConfig, 'utf-8')
 }
 
 /**
