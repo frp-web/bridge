@@ -109,7 +109,8 @@ export class ProcessController extends EventEmitter {
       timestamp: Date.now(),
       payload: {
         pid: handle.pid,
-        uptime: 0
+        uptime: 0,
+        running: true
       }
     } satisfies ProcessControllerEvent)
 
@@ -137,7 +138,7 @@ export class ProcessController extends EventEmitter {
         this.emit('process:stopped', {
           type: 'process:stopped',
           timestamp: Date.now(),
-          payload: { uptime }
+          payload: { uptime, running: false }
         } satisfies ProcessControllerEvent)
 
         this.processStartTime = null
@@ -276,7 +277,8 @@ export class ProcessController extends EventEmitter {
             code: code ?? undefined,
             signal: signal ?? undefined,
             uptime,
-            unexpected: true
+            unexpected: true,
+            running: false
           }
         } satisfies ProcessControllerEvent)
       }
@@ -292,7 +294,8 @@ export class ProcessController extends EventEmitter {
         timestamp: Date.now(),
         payload: {
           error: error.message,
-          pid: this.process?.pid
+          pid: this.process?.pid,
+          running: false
         }
       } satisfies ProcessControllerEvent)
     })

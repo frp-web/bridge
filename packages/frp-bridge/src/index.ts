@@ -1,8 +1,7 @@
 export * from './config-merger'
 export * from './preset-config'
 export { FileSnapshotStorage, FrpBridge, FrpProcessManager } from '@frp-bridge/core'
-export type { FrpBridgeOptions, FrpProcessManagerOptions, NodeInfo, ProcessEvent } from '@frp-bridge/core'
-// Logger is now in @frp-bridge/shared
+export type { FrpBridgeOptions, FrpProcessManagerOptions, NodeInfo, ProcessEvent, ProcessEventType } from '@frp-bridge/core'
 export {
   coreLogger,
   createLogger,
@@ -20,4 +19,5 @@ export {
   tunnelManagerLogger
 } from '@frp-bridge/shared'
 export type { LogData, Logger, LoggerOptions } from '@frp-bridge/shared'
+export type { NodeInfo as ServerNodeInfo } from '@frp-bridge/types'
 export * from '@frp-bridge/types'
