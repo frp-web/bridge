@@ -3,6 +3,7 @@ import type { NodeDeletePayload, TunnelAddPayload, TunnelDeletePayload } from '.
 import type { CommandHandler, CommandHandlerContext, CommandResult, RuntimeEvent } from '../../runtime'
 import type { ConfigApplyPayload, ConfigApplyRawPayload, ProxyAddPayload, ProxyRemovePayload, ProxyUpdatePayload } from '../types'
 import type { CommandDependencies, Validator } from './decorators'
+import { parse as parseToml } from '../../toml'
 import { omitUndefined } from '../../utils'
 import {
   compose,
@@ -114,7 +115,6 @@ function configApplyRawCore(deps: CommandDependencies): CommandHandler<ConfigApp
 
     // Validate TOML syntax
     try {
-      const { parse: parseToml } = await import('../../toml')
       parseToml(content)
     }
     catch (error) {

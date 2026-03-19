@@ -25,8 +25,8 @@
     "dist"
   ],
   "scripts": {
-    "stub": "unbuild --stub",
-    "build": "unbuild"
+    "dev": "rolldown -c --watch",
+    "build": "rolldown -c"
   },
   "dependencies": {
     "@frp-bridge/core": "workspace:*",

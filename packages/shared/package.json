@@ -34,8 +34,8 @@
     "dist"
   ],
   "scripts": {
-    "stub": "unbuild --stub",
-    "build": "unbuild"
+    "dev": "rolldown -c --watch",
+    "build": "rolldown -c"
   },
   "dependencies": {
     "ora": "^9.0.0"
