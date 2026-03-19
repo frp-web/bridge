@@ -8,8 +8,8 @@ import type { RuntimeLogger } from '../../runtime'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
+import { createLogger } from '@frp-bridge/shared'
 import { BinaryNotFoundError, ConfigNotFoundError, GenericError } from '../../errors'
-import { createLogger } from '../../logging'
 
 export interface ProcessHandle {
   /** Process ID */

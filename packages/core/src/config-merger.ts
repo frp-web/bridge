@@ -4,7 +4,9 @@
  */
 
 import type { ProxyConfig } from '@frp-bridge/types'
-import { writeFileSync } from 'node:fs'
+import type { RuntimeLogger } from './runtime'
+import { Buffer } from 'node:buffer'
+import { closeSync, fsyncSync, openSync, writeSync } from 'node:fs'
 
 import { stringify as toToml } from './toml'
 import { ensureDir } from './utils'
@@ -63,12 +65,14 @@ export const DEFAULT_PRESET_CONFIG: PresetConfig = {
 export function mergeConfigs(
   presetConfig: PresetConfig,
   userConfig: string,
-  type: 'frps' | 'frpc'
+  type: 'frps' | 'frpc',
+  logger?: RuntimeLogger
 ): string {
   const parts: string[] = []
   const config = type === 'frps' ? presetConfig.frps : presetConfig.frpc
 
   if (!config) {
+    logger?.warn(`No config found for type ${type}, returning userConfig only`)
     return userConfig
   }
 
@@ -90,14 +94,17 @@ export function mergeConfigs(
 
     // Dashboard 配置
     if (frpsConfig.dashboardPort || frpsConfig.dashboardUser || frpsConfig.dashboardPassword) {
-      const webServer: Record<string, string> = {}
-      if (frpsConfig.dashboardPort)
-        webServer.addr = `0.0.0.0:${frpsConfig.dashboardPort}`
+      const webServer: Record<string, string | number> = {}
+      if (frpsConfig.dashboardPort) {
+        webServer.addr = '0.0.0.0'
+        webServer.port = frpsConfig.dashboardPort
+      }
       if (frpsConfig.dashboardUser)
         webServer.user = frpsConfig.dashboardUser
       if (frpsConfig.dashboardPassword)
         webServer.password = frpsConfig.dashboardPassword
       baseConfig.webServer = webServer
+      logger?.info('webServer config added:', { webServer })
     }
 
     if (frpsConfig.authToken)
@@ -138,13 +145,14 @@ export function saveFrpConfigFile(
   configPath: string,
   tunnels: ProxyConfig[],
   presetConfig: PresetConfig,
-  type: 'frps' | 'frpc'
+  type: 'frps' | 'frpc',
+  logger?: RuntimeLogger
 ): void {
   // 1. 将 tunnels 转换为 TOML 格式
   const userConfig = tunnelsToToml(tunnels)
 
   // 2. 合并预设配置和用户配置
-  const finalConfig = mergeConfigs(presetConfig, userConfig, type)
+  const finalConfig = mergeConfigs(presetConfig, userConfig, type, logger)
 
   // 3. 确保目录存在
   const targetDir = configPath.includes('/') || configPath.includes('\\')
@@ -152,8 +160,17 @@ export function saveFrpConfigFile(
     : '.'
   ensureDir(targetDir)
 
-  // 4. 写入配置文件
-  writeFileSync(configPath, finalConfig, 'utf-8')
+  // 4. 写入配置文件并同步到磁盘
+  const buffer = Buffer.from(finalConfig, 'utf-8')
+  const fd = openSync(configPath, 'w')
+  try {
+    writeSync(fd, buffer, 0, buffer.length, 0)
+    // 同步到磁盘
+    fsyncSync(fd)
+  }
+  finally {
+    closeSync(fd)
+  }
 }
 
 /**

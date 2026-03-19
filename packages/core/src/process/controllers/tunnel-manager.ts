@@ -6,8 +6,8 @@
 import type { ProxyConfig } from '@frp-bridge/types'
 import type { RuntimeLogger } from '../../runtime'
 import type { ConfigurationStore, FrpConfig } from './configuration-store'
+import { createLogger } from '@frp-bridge/shared'
 import { ConfigInvalidError, NotFoundError } from '../../errors'
-import { createLogger } from '../../logging'
 import { typeUsesRemotePort } from '../../utils'
 
 /**

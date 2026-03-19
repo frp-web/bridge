@@ -5,9 +5,9 @@ import type { RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, Snapshot
 
 import { homedir } from 'node:os'
 import process from 'node:process'
+import { setGlobalLoggerOptions } from '@frp-bridge/shared'
 import { consola } from 'consola'
 import { join } from 'pathe'
-import { setGlobalLoggerOptions } from '../logging'
 import { ClientNodeCollector, FileNodeStorage, NodeManager } from '../node'
 import { FrpProcessManager } from '../process'
 import { RpcClient, RpcServer } from '../rpc'
@@ -86,7 +86,7 @@ export class FrpBridgeInitializer {
 
     const loggers = this.createLoggers()
 
-    const process = this.createProcessManager(processDir, loggers.processLogger)
+    const process = this.createProcessManager(rootWorkDir, processDir, loggers.processLogger)
     const runtimeContext = this.createRuntimeContext(runtimeDir, loggers.runtimeLogger)
 
     const nodeManager = this.createNodeManager(runtimeContext, runtimeDir, loggers.runtimeLogger)
@@ -134,12 +134,13 @@ export class FrpBridgeInitializer {
   /**
    * Create process manager
    */
-  private createProcessManager(processDir: string, logger: RuntimeLogger): FrpProcessManager {
+  private createProcessManager(rootWorkDir: string, processDir: string, logger: RuntimeLogger): FrpProcessManager {
     return new FrpProcessManager({
       mode: this.config.process?.mode ?? this.config.mode,
       version: this.config.process?.version,
       workDir: processDir,
       configPath: this.config.configPath,
+      configDir: join(rootWorkDir, 'config'),
       logger
     })
   }

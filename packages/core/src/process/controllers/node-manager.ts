@@ -6,7 +6,7 @@
 import type { ClientConfig } from '@frp-bridge/types'
 import type { RuntimeLogger } from '../../runtime'
 import type { ConfigurationStore } from './configuration-store'
-import { createLogger } from '../../logging'
+import { createLogger } from '@frp-bridge/shared'
 
 export interface NodeInfo {
   /** Node ID */

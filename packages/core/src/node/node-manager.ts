@@ -16,7 +16,7 @@ import type {
 import type { RuntimeContext, RuntimeLogger } from '../runtime'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { createLogger } from '../logging'
+import { createLogger } from '@frp-bridge/shared'
 
 export interface NodeManagerOptions {
   heartbeatTimeout?: number // ms, default 90s

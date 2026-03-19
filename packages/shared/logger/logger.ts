@@ -1,5 +1,5 @@
 /**
- * Logging utility for FRP Bridge Core
+ * Logging utility for FRP Bridge
  * Supports both console output and file logging with daily rotation
  */
 
