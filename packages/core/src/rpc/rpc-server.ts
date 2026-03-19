@@ -4,6 +4,7 @@ import type { EventRpcMessage, RegisterMessage } from './message-types'
 import { randomUUID } from 'node:crypto'
 import { rpcServerLogger } from '@frp-bridge/shared'
 import { WebSocket, WebSocketServer } from 'ws'
+import { ModeError, NotFoundError } from '../errors'
 import { isEventMessage, isPongMessage, isRegisterMessage, isRpcResponse } from './message-types'
 import { safeParse } from './utils'
 
@@ -109,13 +110,13 @@ export class RpcServer {
   async rpcCall(nodeId: string, method: string, params: Record<string, unknown>, timeout = 30000): Promise<unknown> {
     const ws = this.clients.get(nodeId)
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      throw new Error('Client not connected')
+      throw new NotFoundError(`Client not connected: ${nodeId}`)
     }
 
     if (this.options.authorize) {
       const allowed = await this.options.authorize(nodeId, method)
       if (!allowed) {
-        throw new Error('UNAUTHORIZED')
+        throw new ModeError(`Unauthorized: ${nodeId} not allowed to call ${method}`)
       }
     }
 

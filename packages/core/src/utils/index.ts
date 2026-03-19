@@ -9,6 +9,7 @@ import { get as httpsGet } from 'node:https'
 import process from 'node:process'
 import { promisify } from 'node:util'
 import { ARCH_MAP, GITHUB_OWNER, GITHUB_REPO, OS_MAP } from '../constants'
+import { PlatformError } from '../errors'
 
 // Export proxy utilities
 export * from './proxy-utils'
@@ -54,7 +55,7 @@ export function getPlatform(): string {
   const arch = ARCH_MAP[process.arch]
 
   if (!platform || !arch) {
-    throw new Error(`Unsupported platform: ${process.platform}-${process.arch}`)
+    throw new PlatformError(`Unsupported platform: ${process.platform}-${process.arch}`)
   }
 
   return `${platform}_${arch}`
@@ -156,130 +157,6 @@ export function findExistingVersion(workDir: string): string | null {
 }
 
 /**
- * Parse TOML-like config to JSON
- */
-export function parseToml(content: string): Record<string, unknown> {
-  const lines = content.split('\n')
-  const result: Record<string, unknown> = {}
-  let currentSection = ''
-  let currentArrayItem: Record<string, unknown> | null = null
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    // Skip empty lines and comments
-    if (!trimmed || trimmed.startsWith('#')) {
-      continue
-    }
-
-    // Array section header [[section]]
-    if (trimmed.startsWith('[[') && trimmed.endsWith(']]')) {
-      const sectionName = trimmed.slice(2, -2).trim()
-      currentSection = sectionName
-
-      // Initialize as array if not exists
-      if (!Array.isArray(result[currentSection])) {
-        result[currentSection] = []
-      }
-
-      // Create new array item
-      currentArrayItem = {}
-      ;(result[currentSection] as Record<string, unknown>[]).push(currentArrayItem)
-      continue
-    }
-
-    // Regular section header [section]
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      currentSection = trimmed.slice(1, -1).trim()
-      currentArrayItem = null
-
-      if (!result[currentSection]) {
-        result[currentSection] = {}
-      }
-      continue
-    }
-
-    // Key-value pair
-    const eqIndex = trimmed.indexOf('=')
-    if (eqIndex > 0) {
-      const key = trimmed.slice(0, eqIndex).trim()
-      let value: string | number | boolean = trimmed.slice(eqIndex + 1).trim()
-
-      // Remove quotes
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith('\'') && value.endsWith('\''))) {
-        value = value.slice(1, -1)
-      }
-
-      // Parse numbers and booleans
-      if (value === 'true')
-        value = true
-      else if (value === 'false')
-        value = false
-      else if (!Number.isNaN(Number(value)))
-        value = Number(value)
-
-      if (currentSection) {
-        if (currentArrayItem) {
-          // Adding to array item
-          currentArrayItem[key] = value
-        }
-        else {
-          // Adding to regular section
-          ;(result[currentSection] as Record<string, unknown>)[key] = value
-        }
-      }
-      else {
-        result[key] = value
-      }
-    }
-  }
-
-  return result
-}
-
-/**
- * Convert JSON to TOML-like config
- */
-export function toToml(obj: Record<string, unknown>): string {
-  const lines: string[] = []
-
-  // Process top-level keys first (non-object, non-array values)
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value !== 'object' || value === null) {
-      lines.push(formatTomlValue(key, value))
-    }
-  }
-
-  // Process arrays of objects (e.g., [[proxies]])
-  for (const [key, value] of Object.entries(obj)) {
-    if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
-      // This is an array of objects, use [[array]] syntax
-      lines.push('')
-      for (const item of value) {
-        lines.push(`[[${key}]]`)
-        for (const [subKey, subValue] of Object.entries(item)) {
-          lines.push(formatTomlValue(subKey, subValue))
-        }
-        lines.push('') // Empty line between array items
-      }
-    }
-  }
-
-  // Process sections (object values)
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      lines.push('')
-      lines.push(`[${key}]`)
-      for (const [subKey, subValue] of Object.entries(value)) {
-        lines.push(formatTomlValue(subKey, subValue))
-      }
-    }
-  }
-
-  return lines.join('\n').trim()
-}
-
-/**
  * Omit undefined values from an object
  * Returns a new object with only defined values
  */
@@ -291,19 +168,4 @@ export function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
     }
   }
   return result
-}
-
-function formatTomlValue(key: string, value: unknown): string {
-  if (typeof value === 'string') {
-    return `${key} = "${value}"`
-  }
-  if (typeof value === 'boolean' || typeof value === 'number') {
-    return `${key} = ${value}`
-  }
-  if (Array.isArray(value)) {
-    // Only format simple arrays (strings, numbers, booleans)
-    // Object arrays are handled separately in toToml
-    return `${key} = [${value.map(v => typeof v === 'string' ? `"${v}"` : v).join(', ')}]`
-  }
-  return `${key} = "${String(value)}"`
 }

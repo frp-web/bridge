@@ -215,6 +215,9 @@ export class FrpBridge {
     if (this.rpcClient) {
       this.rpcClient.disconnect()
     }
+
+    // Dispose process manager and clean up event listeners
+    await this.process.dispose()
   }
 
   /**

@@ -35,13 +35,10 @@
   },
   "dependencies": {
     "@antfu/eslint-config": "^7.7.3",
-    "consola": "^3.4.2",
     "defu": "^6.1.4",
-    "fs-extra": "^11.3.4",
     "pathe": "^2.0.3"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.4",
     "@types/node": "^25.5.0",
     "bumpp": "^11.0.1",
     "eslint": "^10.0.3",

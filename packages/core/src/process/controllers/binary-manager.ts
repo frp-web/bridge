@@ -4,6 +4,7 @@
  */
 
 import { existsSync } from 'node:fs'
+import { cp, rm } from 'node:fs/promises'
 import { binaryManagerLogger } from '@frp-bridge/shared'
 import { join } from 'pathe'
 import { BINARY_NAMES } from '../../constants'
@@ -82,8 +83,7 @@ export class BinaryManager {
     }
 
     // Copy to destination
-    const fs = await import('fs-extra')
-    await fs.copy(sourceBinary, this.binaryPath)
+    await cp(sourceBinary, this.binaryPath)
 
     // Set executable permission
     this.platformStrategy.setExecutable(this.binaryPath)
@@ -94,8 +94,8 @@ export class BinaryManager {
     this.binaryPath = join(this.workDir, 'bin', targetVersion, binaryName)
 
     // Cleanup
-    await fs.remove(archivePath)
-    await fs.remove(extractDir)
+    await rm(archivePath, { recursive: true, force: true })
+    await rm(extractDir, { recursive: true, force: true })
   }
 
   /**
@@ -110,8 +110,7 @@ export class BinaryManager {
     // Backup current binary if exists
     if (this.hasBinary()) {
       const backupPath = `${this.binaryPath}.bak`
-      const fs = await import('fs-extra')
-      await fs.copy(this.binaryPath, backupPath)
+      await cp(this.binaryPath, backupPath)
     }
 
     // Download new version
@@ -152,8 +151,7 @@ export class BinaryManager {
     const binaryPath = join(this.workDir, 'bin', targetVersion, binaryName)
 
     if (existsSync(binaryPath)) {
-      const fs = await import('fs-extra')
-      await fs.remove(binaryPath)
+      await rm(binaryPath, { recursive: true, force: true })
     }
 
     if (targetVersion === this.version) {

@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import process from 'node:process'
 import { setGlobalLoggerOptions } from '@frp-bridge/shared'
 import { join } from 'pathe'
+import { ValidationError } from '../errors'
 import { ClientNodeCollector, FileNodeStorage, NodeManager } from '../node'
 import { FrpProcessManager } from '../process'
 import { RpcClient, RpcServer } from '../rpc'
@@ -198,7 +199,7 @@ export class FrpBridgeInitializer {
         url: urlWithToken,
         nodeId: rpcOptions.clientNodeId,
         getRegisterPayload: rpcOptions.getRegisterPayload ?? (async () => {
-          throw new Error('rpc getRegisterPayload is required in client mode')
+          throw new ValidationError('rpc getRegisterPayload is required in client mode')
         }),
         handleRequest: rpcOptions.handleRequest ?? (async () => undefined)
       })

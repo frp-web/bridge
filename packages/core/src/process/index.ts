@@ -196,8 +196,8 @@ export class FrpProcessManager extends EventEmitter {
     const timestamp = Date.now()
     const backupPath = `${this.configPath}.${timestamp}.bak`
 
-    const fs = await import('fs-extra')
-    await fs.copy(this.configPath, backupPath)
+    const { copyFile } = await import('node:fs/promises')
+    await copyFile(this.configPath, backupPath)
 
     return backupPath
   }
@@ -392,6 +392,19 @@ export class FrpProcessManager extends EventEmitter {
       pid: status?.pid,
       uptime
     }
+  }
+
+  /**
+   * Dispose and clean up resources
+   */
+  async dispose(): Promise<void> {
+    // Stop process if running
+    if (this.isRunning()) {
+      await this.stop()
+    }
+
+    // Remove all event listeners to prevent memory leaks
+    this.removeAllListeners()
   }
 }
 

@@ -3,6 +3,7 @@ import type { NodeDeletePayload, TunnelAddPayload, TunnelDeletePayload } from '.
 import type { CommandHandler, CommandHandlerContext, CommandResult, RuntimeEvent } from '../../runtime'
 import type { ConfigApplyPayload, ConfigApplyRawPayload, ProxyAddPayload, ProxyRemovePayload, ProxyUpdatePayload } from '../types'
 import type { CommandDependencies, Validator } from './decorators'
+import { ConfigInvalidError, ValidationError } from '../../errors'
 import { parse as parseToml } from '../../toml'
 import { omitUndefined } from '../../utils'
 import {
@@ -118,7 +119,7 @@ function configApplyRawCore(deps: CommandDependencies): CommandHandler<ConfigApp
       parseToml(content)
     }
     catch (error) {
-      throw new Error(`config.applyRaw received invalid TOML content: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      throw new ConfigInvalidError(`config.applyRaw received invalid TOML content: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
     return runConfigMutation(
@@ -413,7 +414,7 @@ export function createPresetConfigSetCommand(deps: CommandDependencies): Command
   return withErrorHandling(async (command, ctx) => {
     const config = command.payload?.config
     if (!config || typeof config !== 'object') {
-      throw new Error('preset.set requires payload.config')
+      throw new ValidationError('preset.set requires payload.config')
     }
 
     const restart = command.payload?.restart ?? true

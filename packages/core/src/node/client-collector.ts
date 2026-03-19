@@ -6,6 +6,7 @@
 import type { NodeHeartbeatPayload, NodeRegisterPayload } from '@frp-bridge/types'
 import { cpus, hostname, platform, release, totalmem } from 'node:os'
 import { clientCollectorLogger } from '@frp-bridge/shared'
+import { ValidationError } from '../errors'
 
 export interface ClientCollectorOptions {
   /** Node ID (set by server after registration) */
@@ -54,7 +55,7 @@ export class ClientNodeCollector {
   /** Collect heartbeat payload */
   collectHeartbeat(): Partial<NodeHeartbeatPayload> {
     if (!this.nodeId) {
-      throw new Error('Node ID not set. Call setNodeId() first or wait for registration.')
+      throw new ValidationError('Node ID not set. Call setNodeId() first or wait for registration.')
     }
 
     const cpuList = cpus()
