@@ -1,3 +1,9 @@
-import createConfig from '@imba97/eslint-config'
+import { antfu } from '@antfu/eslint-config'
 
-export default createConfig()
+export default antfu({
+  type: 'lib',
+
+  rules: {
+    'style/comma-dangle': ['warn', 'never']
+  }
+})

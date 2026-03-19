@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.3",
   "private": true,
-  "packageManager": "pnpm@10.28.2",
+  "packageManager": "pnpm@10.32.1",
   "description": "Frp bridge",
   "author": "imba97",
   "license": "MIT",
@@ -34,23 +34,23 @@
     "prepare": "simple-git-hooks"
   },
   "dependencies": {
+    "@antfu/eslint-config": "^7.7.3",
     "consola": "^3.4.2",
     "defu": "^6.1.4",
-    "fs-extra": "^11.3.3",
+    "fs-extra": "^11.3.4",
     "pathe": "^2.0.3"
   },
   "devDependencies": {
-    "@imba97/eslint-config": "^0.0.6",
     "@types/fs-extra": "^11.0.4",
-    "@types/node": "^24.10.11",
-    "bumpp": "^10.4.1",
-    "eslint": "^9.39.2",
-    "lint-staged": "^16.2.7",
+    "@types/node": "^25.5.0",
+    "bumpp": "^11.0.1",
+    "eslint": "^10.0.3",
+    "lint-staged": "^16.4.0",
     "rolldown": "1.0.0-rc.10",
     "rolldown-plugin-dts": "^0.22.5",
     "simple-git-hooks": "^2.13.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.0"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged"

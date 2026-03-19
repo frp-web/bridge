@@ -38,6 +38,6 @@
     "build": "rolldown -c"
   },
   "dependencies": {
-    "ora": "^9.0.0"
+    "ora": "^9.3.0"
   }
 }
