@@ -13,6 +13,8 @@ import { ARCH_MAP, GITHUB_OWNER, GITHUB_REPO, OS_MAP } from '../constants'
 // Export proxy utilities
 export * from './proxy-utils'
 
+const V_REGEX = /^v/
+
 const exec = promisify(execCallback)
 
 /** Get latest FRP version from GitHub releases */
@@ -35,7 +37,7 @@ export async function getLatestVersion(): Promise<string> {
       response.on('end', () => {
         try {
           const release = JSON.parse(data)
-          const version = release.tag_name?.replace(/^v/, '') || '0.65.0'
+          const version = release.tag_name?.replace(V_REGEX, '') || '0.65.0'
           resolve(version)
         }
         catch (err) {

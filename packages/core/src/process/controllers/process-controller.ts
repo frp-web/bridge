@@ -136,7 +136,7 @@ export class ProcessController extends EventEmitter {
     this.log.info('Stopping process', { pid })
 
     return new Promise<void>((resolve) => {
-      const exitHandler = () => {
+      const exitHandler = (): void => {
         const uptime = this.processStartTime ? Date.now() - this.processStartTime : undefined
 
         this.emit('process:stopped', {

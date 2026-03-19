@@ -165,15 +165,15 @@ export interface SUDPProxyConfig extends BaseProxyConfig {
 }
 
 /** Union type of all proxy configurations */
-export type ProxyConfig =
-  | TCPProxyConfig
-  | UDPProxyConfig
-  | HTTPProxyConfig
-  | HTTPSProxyConfig
-  | TCPMUXProxyConfig
-  | STCPProxyConfig
-  | XTCPProxyConfig
-  | SUDPProxyConfig
+export type ProxyConfig
+  = | TCPProxyConfig
+    | UDPProxyConfig
+    | HTTPProxyConfig
+    | HTTPSProxyConfig
+    | TCPMUXProxyConfig
+    | STCPProxyConfig
+    | XTCPProxyConfig
+    | SUDPProxyConfig
 
 /** Visitor type enum */
 export enum VisitorType {

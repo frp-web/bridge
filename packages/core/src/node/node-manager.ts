@@ -29,12 +29,12 @@ export interface NodeStorage {
   list: () => Promise<NodeInfo[]> | NodeInfo[]
 }
 
-export type NodeEvent =
-  | 'node:registered'
-  | 'node:heartbeat'
-  | 'node:unregistered'
-  | 'node:statusChanged'
-  | 'tunnel:synced'
+export type NodeEvent
+  = | 'node:registered'
+    | 'node:heartbeat'
+    | 'node:unregistered'
+    | 'node:statusChanged'
+    | 'tunnel:synced'
 
 /**
  * Manages nodes in server mode

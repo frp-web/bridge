@@ -407,7 +407,7 @@ export class FrpProcessManager extends EventEmitter {
   /**
    * Query current process status
    */
-  queryProcess() {
+  queryProcess(): { pid?: number, uptime: number } {
     const uptime = this.uptime ? Date.now() - this.uptime : 0
     const status = this.processController.getStatus()
 

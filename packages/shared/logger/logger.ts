@@ -7,6 +7,8 @@ import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+const ABSOLUTE_PATH_REGEX = /^[a-z]:/i
+
 export type LogLevel = 'debug' | 'info' | 'success' | 'warn' | 'error'
 
 export interface LogData {
@@ -84,7 +86,7 @@ export function getDefaultWorkspaceRoot(): string {
  * - Default is workspaceRoot/.frp-web/logs
  */
 export function resolveLogDir(dir: string, workspaceRoot: string): string {
-  if (dir.startsWith('/') || /^[a-z]:/i.test(dir)) {
+  if (dir.startsWith('/') || ABSOLUTE_PATH_REGEX.test(dir)) {
     // Absolute path
     return dir
   }

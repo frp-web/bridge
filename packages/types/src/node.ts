@@ -109,10 +109,10 @@ export interface NodeStatistics {
 }
 
 /** Error codes for node operations */
-export type NodeErrorCode =
-  | 'NODE_NOT_FOUND' // Node does not exist
-  | 'NODE_ALREADY_EXISTS' // Duplicate node registration
-  | 'INVALID_NODE_DATA' // Invalid node data
-  | 'HEARTBEAT_TIMEOUT' // Heartbeat timeout
-  | 'STORAGE_ERROR' // Storage operation error
-  | 'UNAUTHORIZED' // Unauthorized access
+export type NodeErrorCode
+  = | 'NODE_NOT_FOUND' // Node does not exist
+    | 'NODE_ALREADY_EXISTS' // Duplicate node registration
+    | 'INVALID_NODE_DATA' // Invalid node data
+    | 'HEARTBEAT_TIMEOUT' // Heartbeat timeout
+    | 'STORAGE_ERROR' // Storage operation error
+    | 'UNAUTHORIZED' // Unauthorized access

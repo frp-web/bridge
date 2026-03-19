@@ -283,18 +283,18 @@ export class FileNodeStorage implements NodeStorage {
 | `node:registered` | Client 初次连接 | 节点注册 |
 | `node:heartbeat` | Client 心跳上报 | 状态和信息更新 |
 | `node:unregistered` | Client 主动断开 | 节点注销 |
-| `node:statusChanged` | 心跳超时或异常 | 状态变化 (online→offline) | | 心跳确认 |
+| `node:statusChanged` | 心跳超时或异常 | 状态变化 (online→offline) |
 | `node:statusChanged` | (内部) | 状态变化 |
 
 ### 错误处理
 
 ```typescript
-export type NodeErrorCode =
-  | 'NODE_NOT_FOUND' // 节点不存在
-  | 'NODE_ALREADY_EXISTS' // 重复注册 (nodeId 冲突)
-  | 'INVALID_NODE_DATA' // 数据验证失败
-  | 'HEARTBEAT_TIMEOUT' // 心跳超时
-  | 'STORAGE_ERROR' // 持久化错误
+export type NodeErrorCode
+  = | 'NODE_NOT_FOUND' // 节点不存在
+    | 'NODE_ALREADY_EXISTS' // 重复注册 (nodeId 冲突)
+    | 'INVALID_NODE_DATA' // 数据验证失败
+    | 'HEARTBEAT_TIMEOUT' // 心跳超时
+    | 'STORAGE_ERROR' // 持久化错误
 ```
 
 **说明**: Client 侧异常（网络故障、进程崩溃）由 Server 的心跳超时检测处理，自动标记为离线。
