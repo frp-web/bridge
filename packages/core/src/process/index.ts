@@ -10,10 +10,10 @@
  */
 
 import type { ClientConfig, ProxyConfig, ServerConfig } from '@frp-bridge/types'
-import type { ChildProcess } from 'node:child_process'
 import type { PresetConfig } from '../config-merger'
 import type { RuntimeLogger } from '../runtime'
 import type { NodeInfo as NewNodeInfo, ProcessControllerEvent } from './controllers'
+import type { ProcessEventType } from './controllers/process-controller'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
 import { consola } from 'consola'
@@ -27,10 +27,11 @@ import {
   ProcessController,
   TunnelManager
 } from './controllers'
+
 import { PresetConfigManager } from './controllers/preset-config-manager'
 
 export interface ProcessEvent {
-  type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
+  type: ProcessEventType
   timestamp: number
   payload?: {
     code?: number
@@ -98,7 +99,6 @@ export class FrpProcessManager extends EventEmitter {
   private nodeManager: NodeManager | null = null
 
   // Process state tracking
-  private process: ChildProcess | null = null
   private uptime: number | null = null
   private isManualStop = false
 
@@ -244,20 +244,6 @@ export class FrpProcessManager extends EventEmitter {
 
     // Use ProcessController to start the process
     await this.processController.start(binaryPath, this.configPath)
-
-    // Update process state for queryProcess()
-    const status = this.processController.getStatus()
-    if (status) {
-      this.uptime = status.startTime
-      this.process = {
-        pid: status.pid,
-        exitCode: status.exitCode,
-        signalCode: status.signal,
-        kill: () => {
-          // No-op - process is managed by ProcessController
-        }
-      } as ChildProcess
-    }
   }
 
   /** Stop FRP process */
@@ -272,7 +258,6 @@ export class FrpProcessManager extends EventEmitter {
 
     // Clear process state
     this.uptime = null
-    this.process = null
   }
 
   /** Check if process is running */
@@ -412,7 +397,7 @@ export class FrpProcessManager extends EventEmitter {
     const status = this.processController.getStatus()
 
     return {
-      pid: status?.pid ?? this.process?.pid,
+      pid: status?.pid,
       uptime
     }
   }
@@ -420,3 +405,6 @@ export class FrpProcessManager extends EventEmitter {
 
 // Re-export all controllers from './controllers'
 export * from './controllers'
+
+// Export event types for external use
+export type { ProcessEvent }

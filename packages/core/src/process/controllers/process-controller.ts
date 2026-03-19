@@ -28,6 +28,8 @@ export interface ProcessHandle {
   binaryPath: string
 }
 
+export type ProcessEventType = 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
+
 export interface ProcessStatus {
   pid: number
   running: boolean
@@ -40,7 +42,7 @@ export interface ProcessStatus {
 export type ProcessEventListener = (event: ProcessControllerEvent) => void
 
 export interface ProcessControllerEvent {
-  type: 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
+  type: ProcessEventType
   timestamp: number
   payload?: {
     code?: number
@@ -260,8 +262,17 @@ export class ProcessController extends EventEmitter {
       return
     }
 
+    // Capture the current process reference to avoid stale closures
+    const currentProcess = this.process
+    const currentStartTime = this.processStartTime
+
     this.process.on('exit', (code, signal) => {
-      const uptime = this.processStartTime ? Date.now() - this.processStartTime : undefined
+      // Only clear state if this is the current process (not a replaced one)
+      if (this.process !== currentProcess) {
+        return
+      }
+
+      const uptime = currentStartTime ? Date.now() - currentStartTime : undefined
 
       if (!this.isManualStop) {
         this.log.error('Process exited unexpectedly', { code, signal, uptime })
