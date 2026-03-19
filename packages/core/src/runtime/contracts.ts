@@ -10,7 +10,6 @@ export interface RuntimeContext {
   workDir: string
   platform: string
   clock?: () => number
-  logger?: RuntimeLogger
 }
 
 export interface RuntimeLogger {
@@ -74,7 +73,7 @@ export interface RuntimeError {
   details?: Record<string, unknown>
 }
 
-export type RuntimeErrorCode = 'VALIDATION_ERROR' | 'RUNTIME_ERROR' | 'SYSTEM_ERROR' | 'PORT_CONFLICT' | 'RPC_NOT_AVAILABLE' | 'RPC_ERROR'
+export type RuntimeErrorCode = 'VALIDATION_ERROR' | 'RUNTIME_ERROR' | 'SYSTEM_ERROR' | 'PORT_CONFLICT' | 'RPC_NOT_AVAILABLE' | 'RPC_ERROR' | 'MODE_ERROR' | 'UNKNOWN_ERROR'
 
 export interface ConfigSnapshot {
   version: number

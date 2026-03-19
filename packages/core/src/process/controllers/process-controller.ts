@@ -4,7 +4,6 @@
  */
 
 import type { ChildProcess } from 'node:child_process'
-import type { RuntimeLogger } from '../../runtime'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
@@ -28,7 +27,7 @@ export interface ProcessHandle {
   binaryPath: string
 }
 
-export type ProcessEventType = 'process:started' | 'process:stopped' | 'process:exited' | 'process:error'
+export type ProcessEventType = 'process:started' | 'process:stopped' | 'process:exited' | 'process:error' | 'status'
 
 export interface ProcessStatus {
   pid: number
@@ -51,19 +50,14 @@ export interface ProcessControllerEvent {
     pid?: number
     uptime?: number
     unexpected?: boolean
+    running?: boolean
   }
-}
-
-export interface ProcessControllerOptions {
-  /** Optional logger */
-  logger?: RuntimeLogger
 }
 
 /**
  * ProcessController 管理进程的生命周期
  */
 export class ProcessController extends EventEmitter {
-  private readonly logger: RuntimeLogger
   private readonly log = createLogger('Process')
   private process: ChildProcess | null = null
   private processStartTime: number | null = null
@@ -72,9 +66,8 @@ export class ProcessController extends EventEmitter {
   private isManualStop = false
   private gracefulTimeout = 5000 // 5 seconds for graceful shutdown
 
-  constructor(options: ProcessControllerOptions = {}) {
+  constructor() {
     super()
-    this.logger = options.logger ?? console
   }
 
   /**
@@ -302,8 +295,6 @@ export class ProcessController extends EventEmitter {
           pid: this.process?.pid
         }
       } satisfies ProcessControllerEvent)
-
-      this.logger.error('Process error', { error })
     })
   }
 

@@ -4,7 +4,6 @@
  */
 
 import type { ProxyConfig } from '@frp-bridge/types'
-import type { RuntimeLogger } from '../../runtime'
 import type { ConfigurationStore, FrpConfig } from './configuration-store'
 import { createLogger } from '@frp-bridge/shared'
 import { ConfigInvalidError, NotFoundError } from '../../errors'
@@ -26,8 +25,6 @@ export interface TunnelManagerOptions {
   configStore: ConfigurationStore
   /** Config file path */
   configPath: string
-  /** Optional logger */
-  logger?: RuntimeLogger
 }
 
 /**
@@ -36,13 +33,11 @@ export interface TunnelManagerOptions {
 export class TunnelManager {
   private readonly configStore: ConfigurationStore
   private readonly configPath: string
-  private readonly logger: RuntimeLogger
   private readonly log = createLogger('Tunnel')
 
   constructor(options: TunnelManagerOptions) {
     this.configStore = options.configStore
     this.configPath = options.configPath
-    this.logger = options.logger ?? console
   }
 
   /**
@@ -112,9 +107,10 @@ export class TunnelManager {
       const existingTunnel = config.proxies[tunnelIndex]
       const updatedTunnel = { ...existingTunnel, ...proxy }
 
-      // Check remotePort conflict if changed
-      const newRemotePort = proxy.remotePort
-      if (newRemotePort && newRemotePort !== existingTunnel.remotePort) {
+      // Check remotePort conflict if changed (only for tunnel types that use remotePort)
+      const newRemotePort = (proxy as unknown as Record<string, unknown>).remotePort as number | undefined
+      const existingRemotePort = (existingTunnel as unknown as Record<string, unknown>).remotePort as number | undefined
+      if (newRemotePort && newRemotePort !== existingRemotePort) {
         this.validateRemotePort(config.proxies, newRemotePort, updatedTunnel.type, tunnelIndex)
       }
 
@@ -269,7 +265,7 @@ export class TunnelManager {
     }
 
     // Check remotePort conflict for types that use it
-    const proxyRemotePort = proxy.remotePort
+    const proxyRemotePort = (proxy as unknown as Record<string, unknown>).remotePort as number | undefined
     if (proxyRemotePort && typeUsesRemotePort(proxy.type)) {
       this.validateRemotePort(proxies, proxyRemotePort, proxy.type)
     }
@@ -288,7 +284,7 @@ export class TunnelManager {
     const inUse = proxies.some((p, idx) => {
       if (idx === excludeIndex)
         return false
-      const pRemotePort = p.remotePort
+      const pRemotePort = (p as unknown as Record<string, unknown>).remotePort as number | undefined
       return p && pRemotePort === remotePort && typeUsesRemotePort(p.type)
     })
 

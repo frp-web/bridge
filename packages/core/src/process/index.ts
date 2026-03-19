@@ -11,12 +11,11 @@
 
 import type { ClientConfig, ProxyConfig, ServerConfig } from '@frp-bridge/types'
 import type { PresetConfig } from '../config-merger'
-import type { RuntimeLogger } from '../runtime'
 import type { NodeInfo as NewNodeInfo, ProcessControllerEvent } from './controllers'
 import type { ProcessEventType } from './controllers/process-controller'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
-import { consola } from 'consola'
+import { processControllerLogger } from '@frp-bridge/shared'
 import { join } from 'pathe'
 import { saveFrpConfigFile } from '../config-merger'
 import { ConfigNotFoundError, ModeError } from '../errors'
@@ -39,6 +38,7 @@ export interface ProcessEvent {
     error?: string
     pid?: number
     uptime?: number
+    running?: boolean
   }
 }
 
@@ -53,8 +53,6 @@ export interface FrpProcessManagerOptions {
   version?: string
   /** Mode: client or server */
   mode: 'client' | 'server'
-  /** Optional logger */
-  logger?: RuntimeLogger
 }
 
 export interface NodeInfo {
@@ -86,7 +84,6 @@ export class FrpProcessManager extends EventEmitter {
   private readonly workDir: string
   private readonly mode: 'client' | 'server'
   private readonly specifiedVersion?: string
-  private readonly logger: RuntimeLogger
   private readonly configPath: string
   private readonly configDir: string
 
@@ -109,34 +106,29 @@ export class FrpProcessManager extends EventEmitter {
     this.workDir = options.workDir || join(homedir(), '.frp-bridge')
     this.configPath = options.configPath || join(this.workDir, `frp${this.mode === 'client' ? 'c' : 's'}.toml`)
     this.configDir = options.configDir || join(this.workDir, 'config')
-    this.logger = options.logger ?? consola.withTag('FrpProcessManager')
 
     // Initialize components
-    this.configStore = new ConfigurationStore({ logger: this.logger })
-    this.processController = new ProcessController({ logger: this.logger })
+    this.configStore = new ConfigurationStore()
+    this.processController = new ProcessController()
     this.binaryManager = new BinaryManager({
       workDir: this.workDir,
-      mode: this.mode,
-      logger: this.logger
+      mode: this.mode
     })
     this.presetConfigManager = new PresetConfigManager({
       workDir: this.workDir,
-      configDir: this.configDir,
-      logger: this.logger
+      configDir: this.configDir
     })
 
     // Initialize conditional components
     if (this.mode === 'client') {
       this.tunnelManager = new TunnelManager({
         configStore: this.configStore,
-        configPath: this.configPath,
-        logger: this.logger
+        configPath: this.configPath
       })
 
       this.nodeManager = new NodeManager({
         configStore: this.configStore,
-        configPath: this.configPath,
-        logger: this.logger
+        configPath: this.configPath
       })
     }
 
@@ -370,7 +362,7 @@ export class FrpProcessManager extends EventEmitter {
     // 3. 使用 saveFrpConfigFile 生成配置文件
     saveFrpConfigFile(this.configPath, tunnels, presetConfig, type)
 
-    this.logger.info(`Generated FRP config: ${this.configPath}`)
+    processControllerLogger.info(`Generated FRP config: ${this.configPath}`)
   }
 
   /**
@@ -405,6 +397,3 @@ export class FrpProcessManager extends EventEmitter {
 
 // Re-export all controllers from './controllers'
 export * from './controllers'
-
-// Export event types for external use
-export type { ProcessEvent }

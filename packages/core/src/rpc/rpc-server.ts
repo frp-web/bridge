@@ -277,7 +277,7 @@ export class RpcServer {
   }
 
   private async handleMessage(ws: WebSocket, data: WebSocket.RawData, token?: string): Promise<void> {
-    const msg = safeParse(data, this.options.logger)
+    const msg = safeParse(data)
     if (!msg) {
       return
     }

@@ -1,12 +1,11 @@
 import type { NodeInfo, RpcRequest } from '@frp-bridge/types'
 
 import type { FrpProcessManagerOptions, ProcessEvent } from '../process'
-import type { RuntimeContext, RuntimeEvent, RuntimeLogger, RuntimeMode, SnapshotStorage } from '../runtime'
+import type { RuntimeContext, RuntimeEvent, RuntimeMode, SnapshotStorage } from '../runtime'
 
 import { homedir } from 'node:os'
 import process from 'node:process'
 import { setGlobalLoggerOptions } from '@frp-bridge/shared'
-import { consola } from 'consola'
 import { join } from 'pathe'
 import { ClientNodeCollector, FileNodeStorage, NodeManager } from '../node'
 import { FrpProcessManager } from '../process'
@@ -16,7 +15,6 @@ import { ensureDir } from '../utils'
 export interface FrpBridgeRuntimeOptions {
   id?: string
   mode?: RuntimeMode
-  logger?: RuntimeLogger
   clock?: () => number
   platform?: string
   workDir?: string
@@ -84,10 +82,8 @@ export class FrpBridgeInitializer {
       enableFile: true
     })
 
-    const loggers = this.createLoggers()
-
-    const process = this.createProcessManager(rootWorkDir, processDir, loggers.processLogger)
-    const runtimeContext = this.createRuntimeContext(runtimeDir, loggers.runtimeLogger)
+    const process = this.createProcessManager(rootWorkDir, processDir)
+    const runtimeContext = this.createRuntimeContext(runtimeDir)
 
     const nodeManager = this.createNodeManager(runtimeContext, runtimeDir)
     const clientCollector = this.createClientCollector()
@@ -122,40 +118,28 @@ export class FrpBridgeInitializer {
   }
 
   /**
-   * Create loggers for different components
-   */
-  private createLoggers(): { runtimeLogger: RuntimeLogger, processLogger: RuntimeLogger } {
-    const runtimeLogger = this.config.runtime?.logger ?? consola.withTag('FrpRuntime')
-    const processLogger = this.config.process?.logger ?? consola.withTag('FrpProcessManager')
-
-    return { runtimeLogger, processLogger }
-  }
-
-  /**
    * Create process manager
    */
-  private createProcessManager(rootWorkDir: string, processDir: string, logger: RuntimeLogger): FrpProcessManager {
+  private createProcessManager(rootWorkDir: string, processDir: string): FrpProcessManager {
     return new FrpProcessManager({
       mode: this.config.process?.mode ?? this.config.mode,
       version: this.config.process?.version,
       workDir: processDir,
       configPath: this.config.configPath,
-      configDir: join(rootWorkDir, 'config'),
-      logger
+      configDir: join(rootWorkDir, 'config')
     })
   }
 
   /**
    * Create runtime context
    */
-  private createRuntimeContext(runtimeDir: string, logger: RuntimeLogger): RuntimeContext {
+  private createRuntimeContext(runtimeDir: string): RuntimeContext {
     return {
       id: this.config.runtime?.id ?? 'default',
       mode: this.config.runtime?.mode ?? this.config.mode,
       workDir: runtimeDir,
       platform: this.config.runtime?.platform ?? process.platform,
-      clock: this.config.runtime?.clock,
-      logger
+      clock: this.config.runtime?.clock
     }
   }
 

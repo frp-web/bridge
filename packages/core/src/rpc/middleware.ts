@@ -122,7 +122,7 @@ export function errorHandlerMiddleware(): MiddlewareFn {
         code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
         message: error instanceof Error ? error.message : 'Unknown error'
       }
-      rpcMiddlewareLogger.error('RPC middleware error', error)
+      rpcMiddlewareLogger.error('RPC middleware error', error as Error)
     }
   }
 }

@@ -3,7 +3,7 @@ import type { ClientNodeCollector, NodeManager } from '../node'
 import type { FrpProcessManager } from '../process'
 import type { RpcClient, RpcServer } from '../rpc'
 import type { CommandHandler, FrpRuntime, QueryHandler, RuntimeCommand, RuntimeEvent, RuntimeQuery, RuntimeState, SnapshotStorage } from '../runtime'
-import type { CommandDependencies } from './handlers/command-handlers'
+import type { CommandDependencies } from './handlers/decorators'
 
 import type { QueryDependencies } from './handlers/query-handlers'
 import type { FrpBridgeProcessOptions, FrpBridgeRpcOptions, FrpBridgeRuntimeOptions } from './initializer'

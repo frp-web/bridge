@@ -82,6 +82,7 @@ export interface EventRpcMessage {
   payload: unknown
   id?: string
   targetNodeId?: string
+  [key: string]: unknown
 }
 
 /**

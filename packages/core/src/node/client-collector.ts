@@ -90,7 +90,7 @@ export class ClientNodeCollector {
       callback(payload)
     }
     catch (error) {
-      this.log.error?.('Failed to collect initial heartbeat', error)
+      this.log.error?.('Failed to collect initial heartbeat', error as Error)
     }
 
     // Schedule periodic heartbeats
@@ -100,7 +100,7 @@ export class ClientNodeCollector {
         callback(payload)
       }
       catch (error) {
-        this.log.error?.('Failed to collect heartbeat', error)
+        this.log.error?.('Failed to collect heartbeat', error as Error)
       }
     }, heartbeatInterval)
 

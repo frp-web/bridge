@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws'
-import type { RuntimeLogger } from '../runtime'
 import { Buffer } from 'node:buffer'
+import { rpcMiddlewareLogger } from '@frp-bridge/shared'
 
 export function normalizeWebSocketData(data: WebSocket.RawData): string {
   if (typeof data === 'string') {
@@ -19,15 +19,14 @@ export function normalizeWebSocketData(data: WebSocket.RawData): string {
 }
 
 export function safeParse(
-  data: WebSocket.RawData,
-  logger?: Partial<RuntimeLogger>
+  data: WebSocket.RawData
 ): any | undefined {
   try {
     const text = normalizeWebSocketData(data)
     return JSON.parse(text)
   }
   catch (error) {
-    logger?.warn?.('parse message failed', error as Record<string, unknown>)
+    rpcMiddlewareLogger.warn('parse message failed', error as Record<string, unknown>)
     return undefined
   }
 }

@@ -4,7 +4,6 @@
  */
 
 import type { ClientConfig } from '@frp-bridge/types'
-import type { RuntimeLogger } from '../../runtime'
 import type { ConfigurationStore } from './configuration-store'
 import { createLogger } from '@frp-bridge/shared'
 
@@ -33,8 +32,6 @@ export interface NodeManagerOptions {
   configStore: ConfigurationStore
   /** Config file path */
   configPath: string
-  /** Optional logger */
-  logger?: Partial<RuntimeLogger>
 }
 
 /**
