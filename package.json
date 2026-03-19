@@ -25,8 +25,8 @@
     "dist"
   ],
   "scripts": {
-    "dev": "pnpm -r --filter=./packages/** run dev",
-    "build": "pnpm -r --filter=./packages/** run build",
+    "dev": "pnpm -r run dev",
+    "build": "pnpm -r run build",
     "test": "vitest --run",
     "lint": "eslint --cache",
     "release": "bumpp -r",
