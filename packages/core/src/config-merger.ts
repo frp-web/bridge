@@ -40,6 +40,7 @@ export interface FrpcPresetConfig {
   serverPort?: number
   authToken?: string
   user?: string
+  loginFailExit?: boolean
 }
 
 /**
@@ -55,7 +56,8 @@ export const DEFAULT_PRESET_CONFIG: PresetConfig = {
     dashboardPassword: 'admin'
   },
   frpc: {
-    serverPort: 7000
+    serverPort: 7000,
+    loginFailExit: false
   }
 }
 
@@ -117,6 +119,8 @@ export function mergeConfigs(
       baseConfig.serverPort = frpcConfig.serverPort
     if (frpcConfig.user)
       baseConfig.user = frpcConfig.user
+    if (frpcConfig.loginFailExit !== undefined)
+      baseConfig.loginFailExit = frpcConfig.loginFailExit
 
     // Auth token (nested)
     if (frpcConfig.authToken) {
