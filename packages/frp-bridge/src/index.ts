@@ -18,7 +18,8 @@ export type {
   NodeInfo,
   PresetConfig,
   ProcessEvent,
-  ProcessEventType
+  ProcessEventType,
+  ProcessStatus
 } from '@frp-bridge/core'
 
 // Shared exports - export LogLevel explicitly to avoid conflict with types

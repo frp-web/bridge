@@ -11,7 +11,7 @@
 
 import type { ClientConfig, ProxyConfig, ServerConfig } from '@frp-bridge/types'
 import type { PresetConfig } from '../config-merger'
-import type { NodeInfo as NewNodeInfo, ProcessControllerEvent } from './controllers'
+import type { NodeInfo as NewNodeInfo, ProcessControllerEvent, ProcessStatus } from './controllers'
 import type { ProcessEventType } from './controllers/process-controller'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
@@ -384,14 +384,8 @@ export class FrpProcessManager extends EventEmitter {
   /**
    * Query current process status
    */
-  queryProcess(): { pid?: number, uptime: number } {
-    const uptime = this.uptime ? Date.now() - this.uptime : 0
-    const status = this.processController.getStatus()
-
-    return {
-      pid: status?.pid,
-      uptime
-    }
+  queryProcess(): ProcessStatus | null {
+    return this.processController.getStatus()
   }
 
   /**
