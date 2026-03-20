@@ -32,12 +32,14 @@ export interface FrpsPresetConfig {
   subdomainHost?: string
 }
 
+/**
+ * frpc 预设配置
+ */
 export interface FrpcPresetConfig {
   serverAddr?: string
   serverPort?: number
   authToken?: string
   user?: string
-  heartbeatInterval?: number
 }
 
 /**
@@ -115,8 +117,6 @@ export function mergeConfigs(
       baseConfig.serverPort = frpcConfig.serverPort
     if (frpcConfig.user)
       baseConfig.user = frpcConfig.user
-    if (frpcConfig.heartbeatInterval)
-      baseConfig.heartbeatInterval = frpcConfig.heartbeatInterval
 
     // Auth token (nested)
     if (frpcConfig.authToken) {

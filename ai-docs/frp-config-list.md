@@ -2,6 +2,16 @@
 
 基于 frp 官方文档（https://gofrp.org/zh-cn/docs/reference/）整理的客户端和服务端配置类型。
 
+**重要提示**: 本文档适用于 frp v0.52.0+ 版本。在该版本中，配置文件格式从 INI 改为 TOML，部分配置项的位置和命名有所调整。
+
+## 配置格式变更说明 (v0.52.0+)
+
+在 frp v0.52.0 及更高版本中：
+- 配置文件格式从 INI 改为 TOML
+- 传输层配置（如 `heartbeatInterval`、`heartbeatTimeout` 等）需要嵌套在 `[transport]` 配置块下
+- 鉴权配置需要嵌套在 `[auth]` 配置块下
+- Dashboard 配置需要嵌套在 `[webServer]` 配置块下
+
 ## 1. 通用配置 (Common)
 > 文件: `src/types/common.ts`
 
@@ -98,11 +108,13 @@
 
 ### 2.4 ServerTransportConfig
 - **tcpMuxKeepaliveInterval**: int - tcp mux 的心跳检查间隔时间
-- **tcpKeepalive**: int - 和客户端底层 TCP 连接的 keepalive 间隔时间
+- **tcpKeepalive**: int - 和客户端底层 TCP 连接的 keepalive 间隔时间，单位秒
 - **maxPoolCount**: int - 允许客户端设置的最大连接池大小
-- **heartbeatTimeout**: int - 服务端和客户端心跳连接的超时时间
+- **heartbeatTimeout**: int - 服务端和客户端心跳连接的超时时间，默认为 90s
 - **quic**: QUICOptions - QUIC 协议配置参数
 - **tls**: TLSServerConfig - 服务端 TLS 协议配置
+
+**注意**: 在 frp v0.52.0+ 版本中，配置文件格式已更新。传输层配置需要嵌套在 `[transport]` 配置块下。
 
 ### 2.5 TLSServerConfig
 - **force**: bool - 是否只接受启用了 TLS 的客户端连接
@@ -146,17 +158,17 @@
 - **includes**: []string - 指定额外的配置文件目录
 
 ### 3.3 ClientTransportConfig
-- **protocol**: string - 和 frps 之间的通信协议
-- **dialServerTimeout**: int - 连接服务端的超时时间
-- **dialServerKeepalive**: int - 和服务端底层 TCP 连接的 keepalive 间隔时间
+- **protocol**: string - 和 frps 之间的通信协议，可选值为 tcp, kcp, quic, websocket, wss
+- **dialServerTimeout**: int - 连接服务端的超时时间，默认为 10s
+- **dialServerKeepalive**: int - 和服务端底层 TCP 连接的 keepalive 间隔时间，单位秒
 - **connectServerLocalIP**: string - 连接服务端时所绑定的本地 IP
-- **proxyURL**: string - 连接服务端使用的代理地址
+- **proxyURL**: string - 连接服务端使用的代理地址，格式为 {protocol}://user:passwd@192.168.1.128:8080
 - **poolCount**: int - 连接池大小
-- **tcpMux**: bool - TCP 多路复用
+- **tcpMux**: bool - TCP 多路复用，默认启用
 - **tcpMuxKeepaliveInterval**: int - tcp_mux 的心跳检查间隔时间
 - **quic**: QUICOptions - QUIC 协议配置参数
-- **heartbeatInterval**: int - 向服务端发送心跳包的间隔时间
-- **heartbeatTimeout**: int - 和服务端心跳的超时时间
+- **heartbeatInterval**: int - 向服务端发送心跳包的间隔时间，默认为 30s。建议启用 tcp_mux_keepalive_interval，将此值设置为 -1
+- **heartbeatTimeout**: int - 和服务端心跳的超时时间，默认为 90s
 - **tls**: TLSClientConfig - 客户端 TLS 协议配置
 
 ### 3.4 TLSClientConfig
