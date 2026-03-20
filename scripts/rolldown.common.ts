@@ -11,8 +11,8 @@ const commonBuildConfig: RolldownOptions = {
   output: {
     dir: 'dist',
     format: 'es',
-    entryFileNames: '[name].mjs',
-    minify: true
+    minify: true,
+    cleanDir: true
   }
 }
 
