@@ -1,7 +1,7 @@
 {
   "name": "@frp-bridge/core",
   "type": "module",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Frp bridge core",
   "license": "MIT",
   "homepage": "https://github.com/frp-web/bridge#readme",
