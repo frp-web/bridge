@@ -45,7 +45,7 @@ describe('platform strategy', () => {
     it('should extract zip archive', async () => {
       const { executeCommand, commandExists } = await import('../../../packages/core/src/utils')
       vi.mocked(commandExists).mockResolvedValue(true)
-      vi.mocked(executeCommand).mockResolvedValue(undefined)
+      vi.mocked(executeCommand).mockResolvedValue({ stdout: '', stderr: '' })
 
       await strategy.extractArchive('/path/to/archive.zip', '/target/dir')
 
@@ -80,7 +80,7 @@ describe('platform strategy', () => {
     it('should extract tar.gz archive', async () => {
       const { executeCommand, commandExists } = await import('../../../packages/core/src/utils')
       vi.mocked(commandExists).mockImplementation(cmd => Promise.resolve(cmd === 'gzip' || cmd === 'tar'))
-      vi.mocked(executeCommand).mockResolvedValue(undefined)
+      vi.mocked(executeCommand).mockResolvedValue({ stdout: '', stderr: '' })
 
       await strategy.extractArchive('/path/to/archive.tar.gz', '/target/dir')
 
