@@ -7,13 +7,19 @@ export {
   NotFoundError
 } from '@frp-bridge/core'
 export {
+  buildWsUrl,
   configToToml,
   mergeConfigs,
+  NuxtServerPeerTransport,
+  NuxtWebSocketTransport,
+  RpcClient,
+  RpcServer,
   saveFrpConfigFile,
   validatePresetConfig
 } from '@frp-bridge/core'
 export type {
   FrpBridgeOptions,
+  FrpMode,
   FrpProcessManagerOptions,
   NodeInfo,
   PresetConfig,

@@ -1,114 +1,133 @@
-import type { NodeInfo } from './node'
+/**
+ * ControlMessage — 6 类 mesh 消息协议（v4.5）
+ *
+ * 与 JSON-RPC 2.0 无关。消息走 WebSocket 帧，天然带边界，不需要帧头。
+ */
 
-export interface RpcRequest {
-  id: string
-  method: string
-  params: Record<string, unknown>
-  timeout?: number
-}
+import type { ControlEvent } from './control'
+import type { ProxyConfig } from './proxy'
 
-export interface RpcResponse {
-  id: string
-  status: 'success' | 'error'
-  result?: unknown
-  error?: {
-    code: string
-    message: string
-  }
-}
+export type ControlMessageType = 'register' | 'command' | 'ack' | 'event' | 'snapshot' | 'ping' | 'pong'
 
-export interface PingMessage {
-  type: 'ping'
-  timestamp: number
-}
-
-export interface PongMessage {
-  type: 'pong'
-  timestamp: number
+export interface RegisterPayload {
+  /** mesh 节点 id */
+  nodeId: string
+  /** 共享密钥 */
+  token: string
+  /** 客户端能力 */
+  capabilities?: string[]
+  clientVersion?: string
 }
 
 export interface RegisterMessage {
   type: 'register'
-  nodeId: string
-  payload: NodeInfo
+  id: string
+  payload: RegisterPayload
 }
 
-export type RpcInboundMessage = RpcResponse | PongMessage
-export type RpcOutboundMessage = RpcRequest | PingMessage | RegisterMessage
-
-// ============================================================================
-// Event-based Message Types (for compatibility with document spec)
-// ============================================================================
-
 /**
- * Base RPC message type with 'command' or 'event' type
- * This format matches the RPC architecture document specification
+ * command：RPC 调用
+ * - target === 接收方 selfNodeId → 终结，调本地 api
+ * - target !== 接收方 selfNodeId → S 中继：转发给 target 对应 peer
  */
-export interface RpcMessage {
-  type: 'command' | 'event'
+export interface CommandMessage {
+  type: 'command'
+  id: string
+  target: string
+  /** 形如 `frpc.tunnel.add` */
+  action: string
+  /** 位置参数数组 */
+  payload: unknown[]
+  /** 发起方 nodeId（格式 `nodeId:<id>`），路由与回环检测用 */
+  originatorId: string
+  timeoutMs?: number
+}
+
+export interface AckMessage {
+  type: 'ack'
+  id: string
+  status: 'success' | 'failed'
+  result?: unknown
+  error?: { code: string, message: string }
+}
+
+export interface EventMessage {
+  type: 'event'
+  event: ControlEvent
+}
+
+export interface SnapshotMessage {
+  type: 'snapshot'
+  id: string
+  /** 触发的 action（对账语义） */
   action: string
   payload: unknown
-  id?: string
-  targetNodeId?: string
 }
 
-/**
- * Command message (frps -> frpc)
- */
-export interface CommandMessage extends RpcMessage {
-  type: 'command'
-  id: string // Command must have an ID for tracking
+export interface PingMessage {
+  type: 'ping'
+  id: string
+  ts: number
 }
 
-/**
- * Event message (frpc -> frps)
- */
-export interface EventMessage extends RpcMessage {
-  type: 'event'
-  id?: string // Event may reference the original command ID
+export interface PongMessage {
+  type: 'pong'
+  id: string
+  ts: number
+  serverTs: number
 }
 
-/**
- * Tunnel add payload
- */
-export interface TunnelAddPayload {
-  name: string
-  type: 'tcp' | 'http' | 'https' | 'stcp' | 'sudp' | 'xtcp'
-  localPort: number
-  remotePort?: number
-  customDomains?: string[]
-  subdomain?: string
-  [key: string]: unknown
+export type ControlMessage
+  = | RegisterMessage
+    | CommandMessage
+    | AckMessage
+    | EventMessage
+    | SnapshotMessage
+    | PingMessage
+    | PongMessage
+
+// ---------------------------------------------------------------
+// Type guards
+// ---------------------------------------------------------------
+
+export function isRegister(msg: unknown): msg is RegisterMessage {
+  return typeof msg === 'object' && msg !== null && (msg as { type?: string }).type === 'register'
+}
+export function isCommand(msg: unknown): msg is CommandMessage {
+  return typeof msg === 'object' && msg !== null && (msg as { type?: string }).type === 'command'
+}
+export function isAck(msg: unknown): msg is AckMessage {
+  return typeof msg === 'object' && msg !== null && (msg as { type?: string }).type === 'ack'
+}
+export function isEvent(msg: unknown): msg is EventMessage {
+  return typeof msg === 'object' && msg !== null && (msg as { type?: string }).type === 'event'
+}
+export function isSnapshot(msg: unknown): msg is SnapshotMessage {
+  return typeof msg === 'object' && msg !== null && (msg as { type?: string }).type === 'snapshot'
+}
+export function isPing(msg: unknown): msg is PingMessage {
+  return typeof msg === 'object' && msg !== null && (msg as { type?: string }).type === 'ping'
+}
+export function isPong(msg: unknown): msg is PongMessage {
+  return typeof msg === 'object' && msg !== null && (msg as { type?: string }).type === 'pong'
 }
 
-/**
- * Tunnel delete payload
- */
-export interface TunnelDeletePayload {
-  name: string
+// ---------------------------------------------------------------
+// Connection identity (server-side per-connection state)
+// ---------------------------------------------------------------
+
+export interface ConnectionIdentity {
+  nodeId: string
+  /** 内部分配的连接 id（同一 nodeId 多次重连会产生不同 clientId） */
+  clientId: string
+  connectedAt: number
 }
 
-/**
- * Tunnel response payload
- */
-export interface TunnelResponsePayload {
-  success: boolean
-  error?: string
-  tunnel?: TunnelAddPayload
-}
+// ---------------------------------------------------------------
+// Snapshot payload（mesh 对账用）
+// ---------------------------------------------------------------
 
-/**
- * Node delete payload
- */
-export interface NodeDeletePayload {
-  name: string
-}
-
-/**
- * Node response payload
- */
-export interface NodeResponsePayload {
-  success: boolean
-  error?: string
-  deletedNode?: string
+export interface TunnelSnapshotPayload {
+  nodeId: string
+  tunnels: ProxyConfig[]
 }

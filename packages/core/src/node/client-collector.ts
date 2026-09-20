@@ -64,7 +64,6 @@ export class ClientNodeCollector {
     return {
       nodeId: this.nodeId,
       status: 'online',
-      lastHeartbeat: Date.now(),
       cpuCores: cpuList.length,
       memTotal: totalMem
     }

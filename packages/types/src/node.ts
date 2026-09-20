@@ -1,118 +1,83 @@
-/**
- * Node management types
- * Defines types for managing frp-bridge client nodes connected to server
- */
-
 import type { ProxyConfig } from './proxy'
 
-/** Node information structure */
-export interface NodeInfo {
-  id: string // UUID (assigned by server)
-  ip: string // Client IP
-  port: number // Client port
-  protocol: 'tcp' | 'udp' // Protocol type
-  serverAddr: string // Server address
-  serverPort: number // Server port
-  hostname?: string // Client hostname
-  osType?: string // 'linux' | 'darwin' | 'win32'
-  osRelease?: string // OS version/release
-  platform?: string // 'x64' | 'arm64'
-  cpuCores?: number // CPU core count
-  memTotal?: number // Total memory in bytes
-  frpVersion?: string // FRP binary version
-  bridgeVersion?: string // FRP-Bridge version
-  status: 'online' | 'offline' | 'connecting' | 'error' // Node status
-  lastHeartbeat?: number // Last heartbeat timestamp (ms)
-  connectedAt?: number // First connection time (ms)
-  labels?: Record<string, string> // Custom labels
-  metadata?: Record<string, unknown> // Custom metadata
-  token?: string // Authentication token
-  tunnels?: ProxyConfig[] // Tunnels associated with this node (managed by server)
-  createdAt: number // Creation timestamp (ms)
-  updatedAt: number // Last update timestamp (ms)
-}
+export type NodeStatus = 'online' | 'offline' | 'connecting' | 'error'
 
-/** Payload for node registration (Client → Server) */
-export interface NodeRegisterPayload {
+export interface NodeInfo {
+  id: string
+  name?: string
   ip: string
   port: number
+  protocol: 'tcp' | 'udp'
   serverAddr: string
   serverPort: number
-  protocol: 'tcp' | 'udp'
-  hostname: string
-  osType: string
-  osRelease: string
-  platform: string
-  cpuCores: number
-  memTotal: number
-  frpVersion: string
-  bridgeVersion: string
-  token?: string
+  hostname?: string
+  osType?: string
+  osRelease?: string
+  platform?: string
+  cpuCores?: number
+  memTotal?: number
+  frpVersion?: string
+  bridgeVersion?: string
+  status: NodeStatus
+  lastHeartbeat?: number
+  connectedAt?: number
+  tunnels?: ProxyConfig[]
+  labels?: Record<string, string>
+  metadata?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
 }
 
-/** Payload for node heartbeat (Client → Server) */
+export interface NodeRegisterPayload {
+  ip?: string
+  port?: number
+  protocol?: 'tcp' | 'udp'
+  serverAddr?: string
+  serverPort?: number
+  hostname?: string
+  osType?: string
+  osRelease?: string
+  platform?: string
+  cpuCores?: number
+  memTotal?: number
+  frpVersion?: string
+  bridgeVersion?: string
+}
+
 export interface NodeHeartbeatPayload {
   nodeId: string
-  status: 'online' | 'error'
-  lastHeartbeat: number
+  status: NodeStatus
   cpuCores?: number
   memTotal?: number
 }
 
-/** Payload for tunnel synchronization (Client → Server) */
-export interface TunnelSyncPayload {
+export interface NodeSnapshotPayload {
   nodeId: string
   tunnels: ProxyConfig[]
   timestamp: number
 }
 
-/** Payload for tunnel management via RPC (Server → Client) */
-export interface TunnelManagePayload {
-  action: 'add' | 'update' | 'remove' | 'list'
-  tunnel?: ProxyConfig | Partial<ProxyConfig>
-  name?: string // For update/remove operations
-}
-
-/** Response for tunnel management */
-export interface TunnelManageResponse {
-  success: boolean
-  tunnel?: ProxyConfig
-  tunnels?: ProxyConfig[]
-  error?: string
-}
-
-/** Query parameters for listing nodes */
 export interface NodeListQuery {
-  page?: number // Page number, starting from 1
-  pageSize?: number // Items per page, default 20
-  status?: NodeInfo['status'] // Filter by status
-  labels?: Record<string, string> // Filter by labels
-  search?: string // Search by hostname, ip, or name
+  page?: number
+  pageSize?: number
+  status?: NodeStatus
+  search?: string
 }
 
-/** Response for node list query */
 export interface NodeListResponse {
   items: NodeInfo[]
-  total: number // Total count
+  total: number
   page: number
   pageSize: number
   hasMore: boolean
 }
 
-/** Node statistics */
 export interface NodeStatistics {
-  total: number // Total node count
-  online: number // Online node count
-  offline: number // Offline node count
-  connecting: number // Connecting node count
-  error: number // Error state node count
+  total: number
+  online: number
+  offline: number
+  connecting: number
+  error: number
 }
 
-/** Error codes for node operations */
-export type NodeErrorCode
-  = | 'NODE_NOT_FOUND' // Node does not exist
-    | 'NODE_ALREADY_EXISTS' // Duplicate node registration
-    | 'INVALID_NODE_DATA' // Invalid node data
-    | 'HEARTBEAT_TIMEOUT' // Heartbeat timeout
-    | 'STORAGE_ERROR' // Storage operation error
-    | 'UNAUTHORIZED' // Unauthorized access
+export type { TunnelWithNode } from './control'

@@ -1,9 +1,3 @@
-/**
- * FRP Bridge type definitions
- * Based on: https://gofrp.org/zh-cn/docs/reference/
- */
-
-// Client configuration types
 export type {
   AuthClientConfig,
   AuthOIDCClientConfig,
@@ -15,7 +9,6 @@ export type {
   VirtualNetConfig
 } from './client'
 
-// Common configuration types
 export type {
   FileSource,
   HeaderOperations,
@@ -31,21 +24,35 @@ export type {
   WebServerConfig
 } from './common'
 
-// Node management types
 export type {
-  NodeErrorCode,
+  ControlEvent,
+  ControlEventListener,
+  ControlEventType,
+  ControlTarget,
+  FrpConfigApi,
+  FrpConfigSnapshot,
+  FrpControlApi,
+  FrpProcessApi,
+  FrpTunnelApi,
+  NodeCapabilities,
+  NodeRole,
+  ProcessStatus,
+  TunnelWithNode
+} from './control'
+
+export { DEFAULT_CAPABILITIES } from './control'
+
+export type {
   NodeHeartbeatPayload,
   NodeInfo,
   NodeListQuery,
   NodeListResponse,
   NodeRegisterPayload,
+  NodeSnapshotPayload,
   NodeStatistics,
-  TunnelManagePayload,
-  TunnelManageResponse,
-  TunnelSyncPayload
+  NodeStatus
 } from './node'
 
-// Proxy configuration types
 export type {
   BaseProxyConfig,
   BaseVisitorConfig,
@@ -67,29 +74,33 @@ export type {
   XTCPVisitorConfig
 } from './proxy'
 
-// Export enums as values (required for runtime usage)
 export { ProxyType, VisitorType } from './proxy'
 
-// RPC types
 export type {
+  AckMessage,
   CommandMessage,
+  ConnectionIdentity,
+  ControlMessage,
+  ControlMessageType,
   EventMessage,
-  NodeDeletePayload,
-  NodeResponsePayload,
   PingMessage,
   PongMessage,
   RegisterMessage,
-  RpcInboundMessage,
-  RpcMessage,
-  RpcOutboundMessage,
-  RpcRequest,
-  RpcResponse,
-  TunnelAddPayload,
-  TunnelDeletePayload,
-  TunnelResponsePayload
+  RegisterPayload,
+  SnapshotMessage,
+  TunnelSnapshotPayload
 } from './rpc'
 
-// Server configuration types
+export {
+  isAck,
+  isCommand,
+  isEvent,
+  isPing,
+  isPong,
+  isRegister,
+  isSnapshot
+} from './rpc'
+
 export type {
   AuthMethod,
   AuthOIDCServerConfig,
